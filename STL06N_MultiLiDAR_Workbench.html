@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STL-06N 多雷达协同测试与点云融合工作台 (广域大尺度增强版)</title>
+    <style>
+        :root {
+            --bg-dark: #05080f;
+            --panel-bg: #0d1421;
+            --card-bg: #131d2e;
+            --border-color: #1c2b42;
+            --radar1-color: #00f2fe; /* 雷达1: 科技青 */
+            --radar2-color: #ffc837; /* 雷达2: 流光金 */
+            --radar3-color: #ff3366; /* 雷达3: 荧光粉红 */
+            --merged-color: #00ff87; /* 融合点: 荧光绿 */
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部总控栏 */
+        header {
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            height: 52px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            z-index: 100;
+        }
+
+        .brand-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-title {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            color: #fff;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn {
+            background: #182538;
+            color: #fff;
+            border: 1px solid var(--border-color);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn:hover {
+            background: #22344f;
+            border-color: #38bdf8;
+        }
+
+        .btn.active {
+            background: #0284c7;
+            border-color: #38bdf8;
+            font-weight: 600;
+        }
+
+        .btn.danger {
+            background: #dc2626 !important;
+            border-color: #f87171 !important;
+        }
+
+        /* 主体布局 */
+        .workspace {
+            flex: 1;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 画布区 */
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            background: #030509;
+            cursor: grab;
+            overflow: hidden;
+        }
+
+        .canvas-container:active {
+            cursor: grabbing;
+        }
+
+        #fusionCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* 画布浮动缩放平移工具栏 */
+        .zoom-toolbar {
+            position: absolute;
+            left: 20px;
+            bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 20;
+            background: rgba(13, 20, 33, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 6px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .zoom-toolbar .btn-icon {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #182538;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .zoom-toolbar .btn-icon:hover {
+            background: #22344f;
+            border-color: #38bdf8;
+        }
+
+        /* 右侧侧边栏 */
+        .sidebar {
+            width: 410px;
+            background-color: var(--panel-bg);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            z-index: 50;
+        }
+
+        .panel-box {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .panel-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #38bdf8;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* 雷达插槽卡片 */
+        .radar-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+
+        .radar-card.r1 { border-left: 4px solid var(--radar1-color); }
+        .radar-card.r2 { border-left: 4px solid var(--radar2-color); }
+        .radar-card.r3 { border-left: 4px solid var(--radar3-color); }
+
+        .radar-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .radar-name {
+            font-size: 13px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .dot-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #64748b;
+        }
+
+        .dot-indicator.connected {
+            background: var(--merged-color);
+            box-shadow: 0 0 8px var(--merged-color);
+        }
+
+        .param-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        .param-control {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .param-control input[type="range"] {
+            width: 100%;
+            height: 4px;
+            accent-color: #38bdf8;
+        }
+
+        .flip-group {
+            display: flex;
+            gap: 12px;
+            background: rgba(0,0,0,0.25);
+            padding: 6px 8px;
+            border-radius: 4px;
+            margin-top: 6px;
+            font-size: 11px;
+            color: #cbd5e1;
+        }
+
+        .flip-group label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        .btn-group .btn {
+            flex: 1;
+            padding: 4px 6px;
+            font-size: 11px;
+            justify-content: center;
+        }
+
+        /* 鼠标探针浮动标签 */
+        .cursor-probe {
+            position: absolute;
+            background: rgba(13, 20, 33, 0.95);
+            border: 1px solid #38bdf8;
+            backdrop-filter: blur(8px);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            pointer-events: none;
+            color: #fff;
+            font-family: monospace;
+            display: none;
+            z-index: 10;
+            line-height: 1.5;
+        }
+
+        /* 底部状态 */
+        footer {
+            height: 30px;
+            background: var(--panel-bg);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部总控 -->
+    <header>
+        <div class="brand-section">
+            <div class="brand-title">STL-06N 多雷达协同测试与点云融合工作台</div>
+            <span style="font-size:11px; background:#111b2b; padding:3px 8px; border-radius:10px; border:1px solid #1e2c44; color:#38bdf8; font-family:monospace;">广域大尺度增强版 (±20m 标定 / 自由缩放)</span>
+        </div>
+
+        <div class="header-actions">
+            <!-- 快速预设 -->
+            <button class="btn" onclick="applyPreset('origin')">📍 三雷达居中同心</button>
+            <button class="btn" onclick="applyPreset('triangle5m')">📐 5米间距三角阵列</button>
+            <button class="btn active" onclick="applyPreset('wide15m')">🌐 15米大广域拼接</button>
+            <span style="color:#334155">|</span>
+            <button id="btnDemo" class="btn" onclick="toggleDemo()">🎮 模拟三雷达同步数据</button>
+            <button class="btn" onclick="clearAllPoints()">🧹 清空点云</button>
+            <button class="btn" style="background:#1e293b;" onclick="document.getElementById('fileInputCSV').click()">📂 导入点云CSV</button>
+            <input type="file" id="fileInputCSV" accept=".csv" style="display:none;" onchange="importPointsCSV(event)">
+            <button class="btn" style="background:rgba(239, 68, 68, 0.15); color:#fca5a5; border:1px solid rgba(239, 68, 68, 0.4);" onclick="disconnectAllRadars()">🔌 一键断开所有</button>
+        </div>
+    </header>
+
+    <!-- 工作台 -->
+    <div class="workspace">
+        <!-- 融合画布 -->
+        <div class="canvas-container" id="canvasContainer">
+            <canvas id="fusionCanvas"></canvas>
+            <div id="cursorProbe" class="cursor-probe"></div>
+
+            <!-- 画布左下角交互缩放平移工具栏 -->
+            <div class="zoom-toolbar">
+                <button class="btn-icon" title="放大画布视图 (滚轮向上)" onclick="zoomStep(1.25)">➕</button>
+                <button class="btn-icon" title="缩小画布视图 (滚轮向下)" onclick="zoomStep(0.8)">➖</button>
+                <button class="btn-icon" title="重置居中并恢复默认最大视距" onclick="resetCanvasView()">🎯</button>
+            </div>
+        </div>
+
+        <!-- 右侧管理控制台 -->
+        <div class="sidebar">
+
+            <!-- 3个雷达插槽 -->
+            <div class="panel-box">
+                <div class="panel-title">
+                    <span>雷达设备列表与超广域标定 (±20米)</span>
+                </div>
+                <div style="font-size:11px; color:#94a3b8; background:rgba(2, 132, 199, 0.1); border:1px dashed rgba(2, 132, 199, 0.3); border-radius:6px; padding:6px 10px; margin-bottom:10px; line-height:1.4;">
+                    🎯 <b>全新交互</b>：除滑动下方滑块外，您可直接在左侧画布上<b>点击并拖拽雷达中心圆点</b>来移动位置；拖拽<b>朝向箭头圆球端点</b>可自由旋转安装角度！
+                </div>
+
+                <!-- 雷达 1 -->
+                <div class="radar-card r1" id="cardRadar1">
+                    <div class="radar-card-header">
+                        <div class="radar-name">
+                            <div class="dot-indicator" id="dotR1"></div>
+                            <span style="color:var(--radar1-color);">雷达 #1 (对应 COM7)</span>
+                        </div>
+                        <button class="btn" id="btnConnR1" style="padding:3px 10px; font-size:11px; background:#0284c7;" onclick="toggleConnectRadar(0)">⚡ 连接 #1</button>
+                    </div>
+
+                    <!-- 坐标偏移 (±20米，厘米级精度 0.01m) -->
+                    <div class="param-row">
+                        <div class="param-control">
+                            <label>X轴位置 (左右): <span id="r1_xVal" style="color:var(--radar1-color);">-7.50 m</span></label>
+                            <input type="range" id="r1_x" min="-20" max="20" step="0.01" value="-7.50" oninput="updateCalibration()">
+                        </div>
+                        <div class="param-control">
+                            <label>Y轴位置 (上下): <span id="r1_yVal" style="color:var(--radar1-color);">0.00 m</span></label>
+                            <input type="range" id="r1_y" min="-20" max="20" step="0.01" value="0.00" oninput="updateCalibration()">
+                        </div>
+                    </div>
+
+                    <!-- 旋转偏角 -->
+                    <div class="param-row">
+                        <div class="param-control">
+                            <label>安装偏角: <span id="r1_rotVal">30.0°</span></label>
+                            <input type="range" id="r1_rot" min="0" max="360" step="0.5" value="30" oninput="updateCalibration()">
+                        </div>
+                        <div class="param-control">
+                            <label>数据状态: <span id="r1_stat" style="color:var(--radar1-color);">未连接 (0 pts/s)</span></label>
+                            <label><input type="checkbox" id="r1_enable" checked onchange="updateCalibration()"> 参与融合运算</label>
+                        </div>
+                    </div>
+
+                    <!-- 翻转与镜像反转设置 (基于当前角度) -->
+                    <div class="flip-group">
+                        <label title="基于旋转后的屏幕视角做左右水平镜像，不改变当前墙线倾斜角"><input type="checkbox" id="r1_flipX" onchange="updateCalibration()"> ↔ 当前角水平镜像 (左右)</label>
+                        <label title="基于旋转后的屏幕视角做上下垂直翻转，不改变当前墙线倾斜角"><input type="checkbox" id="r1_flipY" onchange="updateCalibration()"> ↕ 当前角垂直翻转 (上下)</label>
+                        <label title="反转雷达硬件扫描的顺时针/逆时针极角增加方向"><input type="checkbox" id="r1_invDir" onchange="updateCalibration()"> 🔄 顺/逆时针反转</label>
+                    </div>
+                </div>
+
+                <!-- 雷达 2 -->
+                <div class="radar-card r2" id="cardRadar2">
+                    <div class="radar-card-header">
+                        <div class="radar-name">
+                            <div class="dot-indicator" id="dotR2"></div>
+                            <span style="color:var(--radar2-color);">雷达 #2 (对应 COM9)</span>
+                        </div>
+                        <button class="btn" id="btnConnR2" style="padding:3px 10px; font-size:11px; background:#0284c7;" onclick="toggleConnectRadar(1)">⚡ 连接 #2</button>
+                    </div>
+
+                    <!-- 坐标偏移 (±20米，厘米级精度 0.01m) -->
+                    <div class="param-row">
+                        <div class="param-control">
+                            <label>X轴位置 (左右): <span id="r2_xVal" style="color:var(--radar2-color);">0.00 m</span></label>
+                            <input type="range" id="r2_x" min="-20" max="20" step="0.01" value="0.00" oninput="updateCalibration()">
+                        </div>
+                        <div class="param-control">
+                            <label>Y轴位置 (上下): <span id="r2_yVal" style="color:var(--radar2-color);">0.00 m</span></label>
+                            <input type="range" id="r2_y" min="-20" max="20" step="0.01" value="0.00" oninput="updateCalibration()">
+                        </div>
+                    </div>
+
+                    <!-- 旋转偏角 -->
+                    <div class="param-row">
+                        <div class="param-control">
+                            <label>安装偏角: <span id="r2_rotVal">0.0°</span></label>
+                            <input type="range" id="r2_rot" min="0" max="360" step="0.5" value="0" oninput="updateCalibration()">
+                        </div>
+                        <div class="param-control">
+                            <label>数据状态: <span id="r2_stat" style="color:var(--radar2-color);">未连接 (0 pts/s)</span></label>
+                            <label><input type="checkbox" id="r2_enable" checked onchange="updateCalibration()"> 参与融合运算</label>
+                        </div>
+                    </div>
+
+                    <!-- 翻转与镜像反转设置 (基于当前角度) -->
+                    <div class="flip-group">
+                        <label title="基于旋转后的屏幕视角做左右水平镜像，不改变当前墙线倾斜角"><input type="checkbox" id="r2_flipX" onchange="updateCalibration()"> ↔ 当前角水平镜像 (左右)</label>
+                        <label title="基于旋转后的屏幕视角做上下垂直翻转，不改变当前墙线倾斜角"><input type="checkbox" id="r2_flipY" onchange="updateCalibration()"> ↕ 当前角垂直翻转 (上下)</label>
+                        <label title="反转雷达硬件扫描的顺时针/逆时针极角增加方向"><input type="checkbox" id="r2_invDir" onchange="updateCalibration()"> 🔄 顺/逆时针反转</label>
+                    </div>
+                </div>
+
+                <!-- 雷达 3 -->
+                <div class="radar-card r3" id="cardRadar3">
+                    <div class="radar-card-header">
+                        <div class="radar-name">
+                            <div class="dot-indicator" id="dotR3"></div>
+                            <span style="color:var(--radar3-color);">雷达 #3 (对应 COM10)</span>
+                        </div>
+                        <button class="btn" id="btnConnR3" style="padding:3px 10px; font-size:11px; background:#0284c7;" onclick="toggleConnectRadar(2)">⚡ 连接 #3</button>
+                    </div>
+
+                    <!-- 坐标偏移 (±20米，厘米级精度 0.01m) -->
+                    <div class="param-row">
+                        <div class="param-control">
+                            <label>X轴位置 (左右): <span id="r3_xVal" style="color:var(--radar3-color);">+7.50 m</span></label>
+                            <input type="range" id="r3_x" min="-20" max="20" step="0.01" value="7.50" oninput="updateCalibration()">
+                        </div>
+                        <div class="param-control">
+                            <label>Y轴位置 (上下): <span id="r3_yVal" style="color:var(--radar3-color);">0.00 m</span></label>
+                            <input type="range" id="r3_y" min="-20" max="20" step="0.01" value="0.00" oninput="updateCalibration()">
+                        </div>
+                    </div>
+
+                    <!-- 旋转偏角 -->
+                    <div class="param-row">
+                        <div class="param-control">
+                            <label>安装偏角: <span id="r3_rotVal">330.0°</span></label>
+                            <input type="range" id="r3_rot" min="0" max="360" step="0.5" value="330" oninput="updateCalibration()">
+                        </div>
+                        <div class="param-control">
+                            <label>数据状态: <span id="r3_stat" style="color:var(--radar3-color);">未连接 (0 pts/s)</span></label>
+                            <label><input type="checkbox" id="r3_enable" checked onchange="updateCalibration()"> 参与融合运算</label>
+                        </div>
+                    </div>
+
+                    <!-- 翻转与镜像反转设置 (基于当前角度) -->
+                    <div class="flip-group">
+                        <label title="基于旋转后的屏幕视角做左右水平镜像，不改变当前墙线倾斜角"><input type="checkbox" id="r3_flipX" onchange="updateCalibration()"> ↔ 当前角水平镜像 (左右)</label>
+                        <label title="基于旋转后的屏幕视角做上下垂直翻转，不改变当前墙线倾斜角"><input type="checkbox" id="r3_flipY" onchange="updateCalibration()"> ↕ 当前角垂直翻转 (上下)</label>
+                        <label title="反转雷达硬件扫描的顺时针/逆时针极角增加方向"><input type="checkbox" id="r3_invDir" onchange="updateCalibration()"> 🔄 顺/逆时针反转</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 空间可视量程 (默认最大 20m) -->
+            <div class="panel-box">
+                <div class="panel-title">
+                    <span>空间可视基准量程 (默认最大)</span>
+                    <span id="rangeLabel" style="color:#00f2fe; font-family:monospace;">20 米</span>
+                </div>
+                <div class="btn-group" id="rangeBtns">
+                    <button class="btn" onclick="setBaseRange(3.0)">3m</button>
+                    <button class="btn" onclick="setBaseRange(5.0)">5m</button>
+                    <button class="btn" onclick="setBaseRange(10.0)">10m</button>
+                    <button class="btn" onclick="setBaseRange(15.0)">15m</button>
+                    <button class="btn active" onclick="setBaseRange(20.0)">20m(最大)</button>
+                    <button class="btn" onclick="setBaseRange(30.0)">30m(超广角)</button>
+                </div>
+            </div>
+
+            <!-- 显示元素开关 -->
+            <div class="panel-box">
+                <div class="panel-title">显示与渲染设置</div>
+                <div class="param-control" style="margin-bottom:8px;">
+                    <label><input type="checkbox" id="showSensors" checked> 绘制雷达物理安装发射原点与朝向</label>
+                </div>
+                <div class="param-control" style="margin-bottom:8px;">
+                    <label><input type="checkbox" id="showPolarRings" checked> 显示同心距离网格标尺线</label>
+                </div>
+                <div class="param-control">
+                    <label>点云大小: <span id="ptSizeLabel">2.5px</span></label>
+                    <input type="range" id="ptSizeRange" min="1.0" max="6.0" step="0.5" value="2.5" oninput="document.getElementById('ptSizeLabel').innerText=this.value+'px'">
+                </div>
+            </div>
+
+            <!-- 导出工具 -->
+            <div class="panel-box">
+                <div class="panel-title">数据存档</div>
+                <button class="btn" style="width:100%; justify-content:center; margin-bottom:8px;" onclick="exportFusedCSV()">📥 导出三雷达融合点云 (CSV)</button>
+                <button class="btn" style="width:100%; justify-content:center;" onclick="saveSnapshot()">📷 截屏当前高分辨率画面</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部状态栏 -->
+    <footer>
+        <div id="footerStatus">💡 交互提示: 鼠标按住雷达原点可直接拖拽移动位置 (按住Shift微调) | 拖拽箭头端点可旋转偏角 | 拖拽空白区域平移画布 | 滚轮缩放</div>
+        <div id="footerStats">当前视口中心: (0.00m, 0.00m) | 缩放比率: 100% | 活跃融合点数: 0</div>
+    </footer>
+
+    <script>
+        // 雷达插槽定义（扩大坐标范围至 ±20m，加入镜像翻转状态）
+        const radars = [
+            { id: 0, name: "雷达 #1", port: null, reader: null, readLoopPromise: null, reading: false, connected: false, color: "#00f2fe", ptsSec: 0, ptsCount: 0, pointMap: new Map(), x: -7.5, y: 0.0, rot: 30, flipX: false, flipY: false, invDir: false, enabled: true },
+            { id: 1, name: "雷达 #2", port: null, reader: null, readLoopPromise: null, reading: false, connected: false, color: "#ffc837", ptsSec: 0, ptsCount: 0, pointMap: new Map(), x: 0.0, y: 0.0, rot: 0, flipX: false, flipY: false, invDir: false, enabled: true },
+            { id: 2, name: "雷达 #3", port: null, reader: null, readLoopPromise: null, reading: false, connected: false, color: "#ff3366", ptsSec: 0, ptsCount: 0, pointMap: new Map(), x: 7.5, y: 0.0, rot: 330, flipX: false, flipY: false, invDir: false, enabled: true }
+        ];
+
+        // 默认基准量程设置为最大 20 米
+        let baseRangeM = 20.0;
+        let zoomFactor = 1.0;     // 画布平移与缩放系数
+        let panOffsetX = 0;       // 画布像素偏移
+        let panOffsetY = 0;
+        let isPanningCanvas = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+
+        // 雷达原点交互拖拽与旋转状态
+        let draggedRadarIdx = null; // null 或 0, 1, 2
+        let dragMode = null;        // 'center' (移动位置) 或 'arrow' (旋转偏角)
+        let hoveredRadarIdx = null; // null 或 0, 1, 2
+        let hoveredPart = null;     // 'center' 或 'arrow'
+
+        let isDemoMode = false;
+        let lastStatTime = performance.now();
+
+        // Canvas 初始化
+        const canvas = document.getElementById('fusionCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvasContainer');
+        const cursorProbe = document.getElementById('cursorProbe');
+
+        function resizeCanvas() {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 缩放基准量程
+        function setBaseRange(r) {
+            baseRangeM = r;
+            zoomFactor = 1.0;
+            panOffsetX = 0;
+            panOffsetY = 0;
+            document.getElementById('rangeLabel').innerText = r.toFixed(0) + " 米";
+            const btns = document.querySelectorAll('#rangeBtns .btn');
+            btns.forEach(b => {
+                b.classList.toggle('active', parseFloat(b.innerText) === r);
+            });
+        }
+
+        // 缩放步进按钮
+        function zoomStep(factor) {
+            zoomFactor = Math.min(8.0, Math.max(0.2, zoomFactor * factor));
+            updateStatsFooter();
+        }
+
+        // 重置视图居中
+        function resetCanvasView() {
+            zoomFactor = 1.0;
+            panOffsetX = 0;
+            panOffsetY = 0;
+            baseRangeM = 20.0;
+            document.getElementById('rangeLabel').innerText = "20 米";
+            setBaseRange(20.0);
+            updateStatsFooter();
+        }
+
+        // 鼠标滚轮平滑缩放
+        container.addEventListener('wheel', e => {
+            e.preventDefault();
+            const zoomDelta = e.deltaY < 0 ? 1.15 : 0.87;
+            zoomFactor = Math.min(10.0, Math.max(0.15, zoomFactor * zoomDelta));
+            updateStatsFooter();
+        }, { passive: false });
+
+        // 获取指定雷达在屏幕画布上的像素锚点与朝向端点
+        function getRadarScreenAnchors(idx) {
+            const r = radars[idx];
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w / 2 + panOffsetX;
+            const cy = h / 2 + panOffsetY;
+            const scale = ((Math.min(w, h) * 0.44) / baseRangeM) * zoomFactor;
+
+            const rx = cx + r.x * scale;
+            const ry = cy + r.y * scale;
+
+            const arrowRad = (r.rot * Math.PI) / 180;
+            const arrowLen = 28;
+            let dirX = Math.sin(arrowRad);
+            let dirY = -Math.cos(arrowRad);
+            if (r.flipX) dirX = -dirX;
+            if (r.flipY) dirY = -dirY;
+            const tipX = rx + arrowLen * dirX;
+            const tipY = ry + arrowLen * dirY;
+
+            return { rx, ry, tipX, tipY, cx, cy, scale };
+        }
+
+        // 鼠标点击命中检测：优先判定旋转手柄，再判定原点中心
+        function findRadarHit(mouseX, mouseY) {
+            if (!document.getElementById('showSensors').checked) return null;
+            for (let i = 0; i < radars.length; i++) {
+                if (!radars[i].enabled) continue;
+                const { rx, ry, tipX, tipY } = getRadarScreenAnchors(i);
+
+                // 1. 旋转端点 (14px 容差)
+                if (Math.hypot(mouseX - tipX, mouseY - tipY) <= 14) {
+                    return { index: i, part: 'arrow' };
+                }
+                // 2. 原点中心 (22px 宽松点击容差)
+                if (Math.hypot(mouseX - rx, mouseY - ry) <= 22) {
+                    return { index: i, part: 'center' };
+                }
+            }
+            return null;
+        }
+
+        // 鼠标按下：区分“拖拽雷达原点”、“拖拽旋转手柄”与“平移画布”
+        container.addEventListener('mousedown', e => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const hit = findRadarHit(mouseX, mouseY);
+            if (hit) {
+                draggedRadarIdx = hit.index;
+                dragMode = hit.part;
+                container.style.cursor = hit.part === 'center' ? 'grabbing' : 'crosshair';
+                cursorProbe.style.display = "none";
+            } else {
+                isPanningCanvas = true;
+                dragStartX = e.clientX - panOffsetX;
+                dragStartY = e.clientY - panOffsetY;
+                container.style.cursor = 'grabbing';
+            }
+        });
+
+        window.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const cx = canvas.width / 2 + panOffsetX;
+            const cy = canvas.height / 2 + panOffsetY;
+            const scale = ((Math.min(canvas.width, canvas.height) * 0.44) / baseRangeM) * zoomFactor;
+
+            // 1. 拖拽雷达操作中
+            if (draggedRadarIdx !== null) {
+                const r = radars[draggedRadarIdx];
+                const idNum = draggedRadarIdx + 1;
+
+                if (dragMode === 'center') {
+                    // 拖拽移动雷达原点 X/Y (自由移动至厘米级别 0.01m，按住Shift更可达毫米级 0.001m)
+                    let newWx = (mouseX - cx) / scale;
+                    let newWy = (mouseY - cy) / scale;
+
+                    const step = e.shiftKey ? 0.001 : 0.01;
+                    newWx = Math.max(-20, Math.min(20, Math.round(newWx / step) * step));
+                    newWy = Math.max(-20, Math.min(20, Math.round(newWy / step) * step));
+
+                    document.getElementById(`r${idNum}_x`).value = newWx.toFixed(2);
+                    document.getElementById(`r${idNum}_y`).value = newWy.toFixed(2);
+                    updateCalibration();
+                    container.style.cursor = 'grabbing';
+                } else if (dragMode === 'arrow') {
+                    // 拖拽旋转箭头偏角 (0~360°)
+                    const rx = cx + r.x * scale;
+                    const ry = cy + r.y * scale;
+                    const dx = mouseX - rx;
+                    const dy = -(mouseY - ry);
+                    let deg = Math.atan2(dx, dy) * 180 / Math.PI;
+                    if (deg < 0) deg += 360;
+
+                    const rotStep = e.shiftKey ? 0.1 : 0.5;
+                    deg = Math.round(deg / rotStep) * rotStep;
+                    deg = (deg % 360).toFixed(1);
+
+                    document.getElementById(`r${idNum}_rot`).value = deg;
+                    updateCalibration();
+                    container.style.cursor = 'crosshair';
+                }
+                cursorProbe.style.display = "none";
+                return;
+            }
+
+            // 2. 平移画布
+            if (isPanningCanvas) {
+                panOffsetX = e.clientX - dragStartX;
+                panOffsetY = e.clientY - dragStartY;
+                updateStatsFooter();
+                cursorProbe.style.display = "none";
+                return;
+            }
+
+            // 3. 悬停检测与光标反馈
+            const hit = findRadarHit(mouseX, mouseY);
+            if (hit) {
+                hoveredRadarIdx = hit.index;
+                hoveredPart = hit.part;
+                container.style.cursor = hit.part === 'center' ? 'grab' : 'crosshair';
+                cursorProbe.style.display = "none";
+            } else {
+                hoveredRadarIdx = null;
+                hoveredPart = null;
+                container.style.cursor = 'default';
+
+                // 空白区域探针世界坐标计算
+                const worldX = (mouseX - cx) / scale;
+                const worldY = (mouseY - cy) / scale;
+                const dist = Math.hypot(worldX, worldY);
+
+                cursorProbe.style.display = "block";
+                cursorProbe.style.left = (e.clientX + 14) + "px";
+                cursorProbe.style.top = (e.clientY + 14) + "px";
+                cursorProbe.innerHTML = `<div>世界 X: <b>${worldX.toFixed(2)} m</b></div><div>世界 Y: <b>${worldY.toFixed(2)} m</b></div><div>距原点: <b>${dist.toFixed(2)} m</b></div>`;
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (draggedRadarIdx !== null) {
+                draggedRadarIdx = null;
+                dragMode = null;
+                updateCalibration();
+            }
+            isPanningCanvas = false;
+            container.style.cursor = hoveredRadarIdx !== null ? (hoveredPart === 'center' ? 'grab' : 'crosshair') : 'default';
+        });
+
+        container.addEventListener('mouseleave', () => {
+            cursorProbe.style.display = "none";
+            hoveredRadarIdx = null;
+            hoveredPart = null;
+        });
+
+        function updateStatsFooter() {
+            const scalePct = (zoomFactor * 100).toFixed(0);
+            const cxM = (-panOffsetX / (((Math.min(canvas.width, canvas.height) * 0.44) / baseRangeM) * zoomFactor)).toFixed(2);
+            const cyM = (-panOffsetY / (((Math.min(canvas.width, canvas.height) * 0.44) / baseRangeM) * zoomFactor)).toFixed(2);
+            document.getElementById('footerStats').innerText = 
+                `当前视口中心: (${cxM}m, ${cyM}m) | 缩放比率: ${scalePct}% | 基准量程: ${baseRangeM}m`;
+        }
+
+        // 更新外参标定与翻转状态 (范围扩充到 ±20m，厘米级精度 0.01m)
+        function updateCalibration() {
+            // 雷达 1
+            radars[0].x = parseFloat(document.getElementById('r1_x').value);
+            radars[0].y = parseFloat(document.getElementById('r1_y').value);
+            radars[0].rot = parseFloat(document.getElementById('r1_rot').value);
+            radars[0].flipX = document.getElementById('r1_flipX').checked;
+            radars[0].flipY = document.getElementById('r1_flipY').checked;
+            radars[0].invDir = document.getElementById('r1_invDir').checked;
+            radars[0].enabled = document.getElementById('r1_enable').checked;
+            document.getElementById('r1_xVal').innerText = (radars[0].x >= 0 ? '+' : '') + radars[0].x.toFixed(2) + ' m';
+            document.getElementById('r1_yVal').innerText = (radars[0].y >= 0 ? '+' : '') + radars[0].y.toFixed(2) + ' m';
+            document.getElementById('r1_rotVal').innerText = radars[0].rot.toFixed(1) + '°';
+
+            // 雷达 2
+            radars[1].x = parseFloat(document.getElementById('r2_x').value);
+            radars[1].y = parseFloat(document.getElementById('r2_y').value);
+            radars[1].rot = parseFloat(document.getElementById('r2_rot').value);
+            radars[1].flipX = document.getElementById('r2_flipX').checked;
+            radars[1].flipY = document.getElementById('r2_flipY').checked;
+            radars[1].invDir = document.getElementById('r2_invDir').checked;
+            radars[1].enabled = document.getElementById('r2_enable').checked;
+            document.getElementById('r2_xVal').innerText = (radars[1].x >= 0 ? '+' : '') + radars[1].x.toFixed(2) + ' m';
+            document.getElementById('r2_yVal').innerText = (radars[1].y >= 0 ? '+' : '') + radars[1].y.toFixed(2) + ' m';
+            document.getElementById('r2_rotVal').innerText = radars[1].rot.toFixed(1) + '°';
+
+            // 雷达 3
+            radars[2].x = parseFloat(document.getElementById('r3_x').value);
+            radars[2].y = parseFloat(document.getElementById('r3_y').value);
+            radars[2].rot = parseFloat(document.getElementById('r3_rot').value);
+            radars[2].flipX = document.getElementById('r3_flipX').checked;
+            radars[2].flipY = document.getElementById('r3_flipY').checked;
+            radars[2].invDir = document.getElementById('r3_invDir').checked;
+            radars[2].enabled = document.getElementById('r3_enable').checked;
+            document.getElementById('r3_xVal').innerText = (radars[2].x >= 0 ? '+' : '') + radars[2].x.toFixed(2) + ' m';
+            document.getElementById('r3_yVal').innerText = (radars[2].y >= 0 ? '+' : '') + radars[2].y.toFixed(2) + ' m';
+            document.getElementById('r3_rotVal').innerText = radars[2].rot.toFixed(1) + '°';
+        }
+
+        // 快速预设
+        function applyPreset(type) {
+            if (type === 'origin') {
+                // 同心重叠（测试三台雷达对齐）
+                document.getElementById('r1_x').value = 0.0; document.getElementById('r1_y').value = 0.0; document.getElementById('r1_rot').value = 0;
+                document.getElementById('r2_x').value = 0.0; document.getElementById('r2_y').value = 0.0; document.getElementById('r2_rot').value = 0;
+                document.getElementById('r3_x').value = 0.0; document.getElementById('r3_y').value = 0.0; document.getElementById('r3_rot').value = 0;
+                setBaseRange(12.0);
+            } else if (type === 'triangle5m') {
+                // 5米等边三角
+                document.getElementById('r1_x').value = -3.0; document.getElementById('r1_y').value = -2.0; document.getElementById('r1_rot').value = 30;
+                document.getElementById('r2_x').value = 3.0;  document.getElementById('r2_y').value = -2.0; document.getElementById('r2_rot').value = 330;
+                document.getElementById('r3_x').value = 0.0;  document.getElementById('r3_y').value = 3.5;  document.getElementById('r3_rot').value = 180;
+                setBaseRange(15.0);
+            } else if (type === 'wide15m') {
+                // 15~20米大广域横向拼接
+                document.getElementById('r1_x').value = -7.5; document.getElementById('r1_y').value = 0.0; document.getElementById('r1_rot').value = 30;
+                document.getElementById('r2_x').value = 0.0;  document.getElementById('r2_y').value = 0.0; document.getElementById('r2_rot').value = 0;
+                document.getElementById('r3_x').value = 7.5;  document.getElementById('r3_y').value = 0.0; document.getElementById('r3_rot').value = 330;
+                setBaseRange(20.0);
+            }
+            updateCalibration();
+        }
+
+        // Web Serial API 多路串口并发连接 / 安全断开
+        async function disconnectSingleRadar(index) {
+            const r = radars[index];
+            const btn = document.getElementById(`btnConnR${index+1}`);
+            const dot = document.getElementById(`dotR${index+1}`);
+            const stat = document.getElementById(`r${index+1}_stat`);
+
+            if (!r.connected && !r.port && !r.reader) return;
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = `断开中...`;
+            }
+            r.reading = false;
+
+            // 1. 发起 cancel 终止数据读取流
+            try {
+                if (r.reader) {
+                    await r.reader.cancel().catch(e => console.warn(`取消雷达 #${index+1} 失败:`, e));
+                }
+            } catch (e) {
+                console.warn(`雷达 #${index+1} cancel 提示:`, e);
+            }
+
+            // 2. 等待读取循环异步任务彻底退出并释放锁
+            if (r.readLoopPromise) {
+                try {
+                    await r.readLoopPromise;
+                } catch (e) {}
+                r.readLoopPromise = null;
+            }
+
+            // 3. 留出 30ms 让浏览器流引擎底层释放 ReadableStream 锁
+            await new Promise(res => setTimeout(res, 30));
+
+            // 4. 关闭串口
+            try {
+                if (r.port) {
+                    await r.port.close();
+                }
+            } catch (e) {
+                console.warn(`雷达 #${index+1} 端口关闭提示:`, e);
+            }
+
+            // 5. 强制重置内存与UI状态，确保即便底层抛错也绝对能恢复交互
+            r.reader = null;
+            r.port = null;
+            r.connected = false;
+            r.pointMap.clear();
+            r.ptsSec = 0;
+            if (dot) dot.classList.remove('connected');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = `⚡ 连接 #${index+1}`;
+                btn.style.background = "#0284c7";
+            }
+            if (stat) stat.innerText = "未连接 (0 pts/s)";
+        }
+
+        async function disconnectAllRadars() {
+            for (let i = 0; i < radars.length; i++) {
+                if (radars[i].connected || radars[i].port) {
+                    await disconnectSingleRadar(i);
+                }
+            }
+        }
+
+        async function toggleConnectRadar(index) {
+            const r = radars[index];
+            const btn = document.getElementById(`btnConnR${index+1}`);
+            const dot = document.getElementById(`dotR${index+1}`);
+            const stat = document.getElementById(`r${index+1}_stat`);
+
+            if (r.connected) {
+                await disconnectSingleRadar(index);
+                return;
+            }
+
+            if (!("serial" in navigator)) {
+                alert("当前浏览器不支持 Web Serial API，请使用 Google Chrome 或 Microsoft Edge 浏览器！");
+                return;
+            }
+
+            try {
+                r.port = await navigator.serial.requestPort();
+                await r.port.open({ baudRate: 230400, dataBits: 8, stopBits: 1, parity: "none", bufferSize: 65536 });
+
+                r.connected = true;
+                r.reading = true;
+                dot.classList.add('connected');
+                btn.innerText = `断开 #${index+1}`;
+                btn.style.background = "#dc2626";
+                stat.innerText = "已连接 (230400)";
+
+                r.readLoopPromise = readRadarStream(index);
+            } catch (err) {
+                console.error(`雷达 ${index+1} 连接失败:`, err);
+                r.connected = false;
+                r.reading = false;
+                r.port = null;
+                r.reader = null;
+                btn.disabled = false;
+                btn.innerText = `⚡ 连接 #${index+1}`;
+                btn.style.background = "#0284c7";
+                if (err.message && (err.message.includes("already open") || err.message.includes("busy") || err.message.includes("denied"))) {
+                    alert(`雷达 #${index+1} 连接失败: 该端口已被占用！\n系统检测到您的三台雷达端口分别是：COM7、COM9、COM10。\n请确保在弹窗列表中选择尚未连接的那个端口（不要重复选已连接的口）！`);
+                } else if (!err.message.includes("No port selected")) {
+                    alert(`雷达 #${index+1} 连接失败: ` + err.message);
+                }
+            }
+        }
+
+        async function readRadarStream(index) {
+            const r = radars[index];
+            const rawBytes = [];
+
+            while (r.port && r.port.readable && r.reading) {
+                let localReader = null;
+                try {
+                    localReader = r.port.readable.getReader();
+                    r.reader = localReader;
+                    while (r.reading) {
+                        const { value, done } = await localReader.read();
+                        if (done) break;
+                        if (value) {
+                            for (let i = 0; i < value.length; i++) rawBytes.push(value[i]);
+
+                            while (rawBytes.length >= 47) {
+                                if (rawBytes[0] === 0x54 && rawBytes[1] === 0x2C) {
+                                    const packet = rawBytes.splice(0, 47);
+                                    parsePacket(index, packet);
+                                } else {
+                                    rawBytes.shift();
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`读取雷达 ${index+1} 异常:`, e);
+                } finally {
+                    if (localReader) {
+                        try {
+                            localReader.releaseLock();
+                        } catch (e) {}
+                    }
+                    if (r.reader === localReader) {
+                        r.reader = null;
+                    }
+                }
+            }
+        }
+
+        function parsePacket(index, pkt) {
+            const r = radars[index];
+            const startAngle = (pkt[4] | (pkt[5] << 8)) / 100.0;
+            let endAngle = (pkt[42] | (pkt[43] << 8)) / 100.0;
+            if (endAngle < startAngle) endAngle += 360.0;
+            const step = (endAngle - startAngle) / 11.0;
+
+            const now = performance.now();
+            for (let i = 0; i < 12; i++) {
+                const offset = 6 + i * 3;
+                const distMm = pkt[offset] | (pkt[offset + 1] << 8);
+                const intensity = pkt[offset + 2];
+                let localDeg = (startAngle + step * i) % 360.0;
+                const distM = distMm / 1000.0;
+
+                if (distMm > 30 && intensity > 15) {
+                    const bucket = Math.floor(localDeg * 2) % 720;
+                    r.pointMap.set(bucket, {
+                        localDeg: localDeg,
+                        distM: distM,
+                        intensity: intensity,
+                        time: now
+                    });
+                    r.ptsCount++;
+                }
+            }
+        }
+
+        // 模拟测试
+        let simAngle = 0;
+        function toggleDemo() {
+            isDemoMode = !isDemoMode;
+            document.getElementById('btnDemo').classList.toggle('active', isDemoMode);
+        }
+
+        function generateSimData() {
+            if (!isDemoMode) return;
+            const now = performance.now();
+            simAngle = (simAngle + 1.2) % 360;
+
+            // 模拟大广域空间中移动的物体
+            const targetWorldX = Math.sin(simAngle * 0.02) * 6.0;
+            const targetWorldY = Math.cos(simAngle * 0.03) * 4.0;
+
+            radars.forEach(r => {
+                if (!r.enabled) return;
+                const dx = targetWorldX - r.x;
+                const dy = targetWorldY - r.y;
+                const dist = Math.hypot(dx, dy);
+                let localAngle = (Math.atan2(dx, dy) * 180 / Math.PI - r.rot + 720) % 360;
+
+                for (let d = -5; d <= 5; d += 1) {
+                    const deg = (localAngle + d + 360) % 360;
+                    r.pointMap.set(Math.floor(deg * 2), {
+                        localDeg: deg,
+                        distM: dist + 0.05 * Math.sin(d),
+                        intensity: 180,
+                        time: now
+                    });
+                    r.ptsCount++;
+                }
+            });
+        }
+
+        function clearAllPoints() {
+            radars.forEach(r => r.pointMap.clear());
+        }
+
+        // ------------------ 广域融合渲染引擎 ------------------
+        function renderFusionView() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w / 2 + panOffsetX;
+            const cy = h / 2 + panOffsetY;
+            const scale = ((Math.min(w, h) * 0.44) / baseRangeM) * zoomFactor;
+            const ptSize = parseFloat(document.getElementById('ptSizeRange').value);
+
+            ctx.fillStyle = "#030509";
+            ctx.fillRect(0, 0, w, h);
+
+            // 1. 绘制网格与同心圆标尺线 (覆盖到 40 米广域)
+            if (document.getElementById('showPolarRings').checked) {
+                const ringIntervals = [1, 2, 5, 10, 15, 20, 25, 30, 40];
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = "#0f1724";
+                ctx.setLineDash([2, 4]);
+
+                ringIntervals.forEach(r => {
+                    const rPx = r * scale;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, rPx, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.fillStyle = "#334155";
+                    ctx.font = "11px Consolas, monospace";
+                    ctx.fillText(r + "m", cx + 8, cy - rPx - 4);
+                });
+
+                // 十字主轴标尺线
+                ctx.strokeStyle = "#162235";
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(cx - 3000, cy); ctx.lineTo(cx + 3000, cy);
+                ctx.moveTo(cx, cy - 3000); ctx.lineTo(cx, cy + 3000);
+                ctx.stroke();
+            }
+
+            // 2. 收集各雷达点云，应用刚体平移、旋转及【正反镜像翻转】
+            const now = performance.now();
+            let totalRenderedPoints = 0;
+
+            radars.forEach((r, idx) => {
+                if (!r.enabled) return;
+
+                const radRot = (r.rot * Math.PI) / 180;
+
+                r.pointMap.forEach((pt, key) => {
+                    const age = now - pt.time;
+                    if (!pt.isStatic && age > 500) {
+                        r.pointMap.delete(key);
+                        return;
+                    }
+
+                    // 1. 顺时针 / 逆时针扫描方向反转
+                    let deg = pt.localDeg;
+                    if (r.invDir) {
+                        deg = (360.0 - deg) % 360.0;
+                    }
+
+                    // 2. 局部极坐标转笛卡尔
+                    const localRad = (deg * Math.PI) / 180;
+                    const lx = pt.distM * Math.sin(localRad);
+                    const ly = pt.distM * Math.cos(localRad);
+
+                    // 3. 先基于当前安装偏角 (rot) 进行旋转变换
+                    let rx = lx * Math.cos(radRot) - ly * Math.sin(radRot);
+                    let ry = lx * Math.sin(radRot) + ly * Math.cos(radRot);
+
+                    // 4. 基于当前已旋转的角度视角，进行水平 / 垂直正反镜像翻转
+                    // （将墙线先旋转到水平或竖直后，翻转直接沿屏幕左右/上下镜像，保持墙面角度绝不打乱）
+                    if (r.flipX) rx = -rx;
+                    if (r.flipY) ry = -ry;
+
+                    // 5. 平移到世界坐标 (±20m 任意位置)
+                    const wx = r.x + rx;
+                    const wy = r.y + ry;
+
+                    // 6. 投影到屏幕画布
+                    const px = cx + wx * scale;
+                    const py = cy + wy * scale;
+
+                    ctx.fillStyle = r.color;
+                    ctx.beginPath();
+                    ctx.arc(px, py, ptSize, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    totalRenderedPoints++;
+                });
+            });
+
+            // 恢复不透明度
+            ctx.globalAlpha = 1.0;
+
+            // 3. 绘制雷达安装基座点与朝向箭头 (支持原点点击拖拽与角度拖拽)
+            if (document.getElementById('showSensors').checked) {
+                radars.forEach((r, idx) => {
+                    if (!r.enabled) return;
+                    const { rx, ry, tipX, tipY } = getRadarScreenAnchors(idx);
+
+                    const isHovered = (hoveredRadarIdx === idx);
+                    const isDragged = (draggedRadarIdx === idx);
+
+                    // A. 拖拽时的辅助引导线 (对齐世界原点与X/Y轴)
+                    if (isDragged && dragMode === 'center') {
+                        ctx.save();
+                        ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+                        ctx.lineWidth = 1;
+                        ctx.setLineDash([3, 4]);
+                        ctx.beginPath();
+                        ctx.moveTo(cx, cy);
+                        ctx.lineTo(rx, ry);
+                        ctx.stroke();
+
+                        ctx.strokeStyle = "rgba(0, 242, 254, 0.25)";
+                        ctx.beginPath();
+                        ctx.moveTo(rx, cy); ctx.lineTo(rx, ry);
+                        ctx.moveTo(cx, ry); ctx.lineTo(rx, ry);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+
+                    // B. 悬停与拖拽外发光光环
+                    if (isDragged) {
+                        ctx.save();
+                        ctx.strokeStyle = "#ffffff";
+                        ctx.lineWidth = 2.5;
+                        ctx.beginPath();
+                        ctx.arc(rx, ry, 20, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.restore();
+                    } else if (isHovered && hoveredPart === 'center') {
+                        ctx.save();
+                        ctx.strokeStyle = r.color;
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([3, 3]);
+                        ctx.beginPath();
+                        ctx.arc(rx, ry, 17 + Math.sin(now * 0.012) * 3, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+
+                    // C. 雷达基座原点 (高品质触控手柄，带阴影与同心圆)
+                    ctx.save();
+                    ctx.shadowBlur = isDragged ? 16 : (isHovered ? 12 : 6);
+                    ctx.shadowColor = r.color;
+
+                    // 底座黑盘
+                    ctx.fillStyle = "#090d16";
+                    ctx.beginPath();
+                    ctx.arc(rx, ry, 10, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // 中心颜色圆
+                    ctx.fillStyle = r.color;
+                    ctx.beginPath();
+                    ctx.arc(rx, ry, 6.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // 白边描边
+                    ctx.strokeStyle = isDragged ? "#ffffff" : "rgba(255, 255, 255, 0.85)";
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.restore();
+
+                    // D. 朝向箭头与旋转把手
+                    ctx.save();
+                    ctx.strokeStyle = r.color;
+                    ctx.lineWidth = (isHovered && hoveredPart === 'arrow') || (isDragged && dragMode === 'arrow') ? 3.5 : 2.2;
+                    ctx.beginPath();
+                    ctx.moveTo(rx, ry);
+                    ctx.lineTo(tipX, tipY);
+                    ctx.stroke();
+
+                    // 旋转端点圆球把手
+                    ctx.fillStyle = (isHovered && hoveredPart === 'arrow') || (isDragged && dragMode === 'arrow') ? "#ffffff" : r.color;
+                    ctx.beginPath();
+                    ctx.arc(tipX, tipY, isHovered && hoveredPart === 'arrow' ? 6 : 4.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = "#000000";
+                    ctx.lineWidth = 1.2;
+                    ctx.stroke();
+                    ctx.restore();
+
+                    // E. 标注文字与浮动实时HUD气泡
+                    ctx.save();
+                    if (isDragged) {
+                        const boxW = dragMode === 'center' ? 172 : 125;
+                        const boxH = 26;
+                        ctx.fillStyle = "rgba(10, 15, 28, 0.92)";
+                        ctx.strokeStyle = r.color;
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        if (ctx.roundRect) ctx.roundRect(rx + 14, ry - 32, boxW, boxH, 6);
+                        else ctx.rect(rx + 14, ry - 32, boxW, boxH);
+                        ctx.fill();
+                        ctx.stroke();
+
+                        ctx.fillStyle = "#ffffff";
+                        ctx.font = "bold 11px Consolas, monospace";
+                        if (dragMode === 'center') {
+                            ctx.fillText(`📍 X:${r.x>=0?'+':''}${r.x.toFixed(2)}m Y:${r.y>=0?'+':''}${r.y.toFixed(2)}m`, rx + 20, ry - 15);
+                        } else {
+                            ctx.fillText(`🔄 偏角: ${r.rot.toFixed(1)}°`, rx + 20, ry - 15);
+                        }
+                    } else {
+                        ctx.fillStyle = "#ffffff";
+                        ctx.font = "bold 11px sans-serif";
+                        ctx.fillText(`${r.name} (${r.x>=0?'+':''}${r.x.toFixed(2)}m, ${r.y>=0?'+':''}${r.y.toFixed(2)}m)`, rx + 14, ry + 4);
+
+                        if (isHovered) {
+                            ctx.fillStyle = hoveredPart === 'center' ? "#38bdf8" : "#ffc837";
+                            ctx.font = "10px sans-serif";
+                            const hintText = hoveredPart === 'center' ? "🖱️ 按住拖拽移动原点 (X/Y)" : "🔄 拖拽旋转安装角";
+                            ctx.fillText(hintText, rx + 14, ry - 12);
+                        }
+                    }
+                    ctx.restore();
+                });
+            }
+
+            // 世界原点十字红星
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy);
+            ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8);
+            ctx.stroke();
+        }
+
+        // CSV 导出 (基于当前旋转后的实际空间坐标输出)
+        function exportFusedCSV() {
+            let csv = "Radar_ID,World_X_M,World_Y_M,Intensity\n";
+            radars.forEach(r => {
+                const radRot = (r.rot * Math.PI) / 180;
+                r.pointMap.forEach(pt => {
+                    let deg = r.invDir ? (360.0 - pt.localDeg) % 360.0 : pt.localDeg;
+                    const localRad = (deg * Math.PI) / 180;
+                    const lx = pt.distM * Math.sin(localRad);
+                    const ly = pt.distM * Math.cos(localRad);
+                    let rx = lx * Math.cos(radRot) - ly * Math.sin(radRot);
+                    let ry = lx * Math.sin(radRot) + ly * Math.cos(radRot);
+                    if (r.flipX) rx = -rx;
+                    if (r.flipY) ry = -ry;
+                    const wx = r.x + rx;
+                    const wy = r.y + ry;
+                    csv += `${r.id+1},${wx.toFixed(3)},${wy.toFixed(3)},${pt.intensity}\n`;
+                });
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `STL06N_FusedPoints_${Date.now()}.csv`;
+            a.click();
+        }
+
+        // CSV 点云文件导入 (用于离线分析与回放已标定数据)
+        function importPointsCSV(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.trim().split(/\r?\n/);
+                if (lines.length < 2) {
+                    alert("CSV 文件内容为空！");
+                    return;
+                }
+
+                clearAllPoints();
+
+                let importedCount = 0;
+                const now = performance.now();
+
+                for (let i = 1; i < lines.length; i++) {
+                    const parts = lines[i].split(',');
+                    if (parts.length < 4) continue;
+                    const rid = parseInt(parts[0]) - 1;
+                    const wx = parseFloat(parts[1]);
+                    const wy = parseFloat(parts[2]);
+                    const intensity = parseFloat(parts[3]);
+
+                    if (rid >= 0 && rid < radars.length && !isNaN(wx) && !isNaN(wy)) {
+                        const r = radars[rid];
+                        let relX = wx - r.x;
+                        let relY = wy - r.y;
+                        if (r.flipX) relX = -relX;
+                        if (r.flipY) relY = -relY;
+                        const distM = Math.hypot(relX, relY);
+                        const radRot = (r.rot * Math.PI) / 180;
+                        const lx = relX * Math.cos(-radRot) - relY * Math.sin(-radRot);
+                        const ly = relX * Math.sin(-radRot) + relY * Math.cos(-radRot);
+                        let localDeg = (Math.atan2(lx, ly) * 180 / Math.PI + 360) % 360;
+                        if (r.invDir) localDeg = (360.0 - localDeg) % 360.0;
+
+                        const bucket = Math.floor(localDeg * 2) % 720;
+                        r.pointMap.set(bucket, {
+                            localDeg: localDeg,
+                            distM: distM,
+                            intensity: isNaN(intensity) ? 150 : intensity,
+                            time: now,
+                            isStatic: true
+                        });
+                        importedCount++;
+                    }
+                }
+
+                alert(`成功导入 ${importedCount} 个点云数据！\n您现在可以在画布上直接拖拽雷达原点，或在右侧面板旋转角度并进行水平/垂直正反翻转！`);
+                event.target.value = '';
+            };
+            reader.readAsText(file);
+        }
+
+        function saveSnapshot() {
+            const url = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `STL06N_MultiRadar_Snapshot_${Date.now()}.png`;
+            a.click();
+        }
+
+        // 主循环
+        function mainLoop(ts) {
+            generateSimData();
+            renderFusionView();
+
+            if (ts - lastStatTime >= 1000) {
+                radars.forEach((r, idx) => {
+                    r.ptsSec = r.ptsCount;
+                    r.ptsCount = 0;
+                    if (r.connected) {
+                        document.getElementById(`r${idx+1}_stat`).innerText = `已连接 (${r.ptsSec} pts/s)`;
+                    }
+                });
+                lastStatTime = ts;
+            }
+
+            requestAnimationFrame(mainLoop);
+        }
+        requestAnimationFrame(mainLoop);
+    </script>
+</body>
+</html>

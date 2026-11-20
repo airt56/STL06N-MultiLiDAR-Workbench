@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STL-06N 激光雷达专业测试与调测工作台</title>
+    <style>
+        :root {
+            --bg-dark: #070a10;
+            --panel-bg: #0d131f;
+            --card-bg: #131c2d;
+            --border-color: #1e2c44;
+            --accent-cyan: #00f2fe;
+            --accent-green: #00ff87;
+            --accent-gold: #ffb703;
+            --accent-red: #ef4444;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部导航控制台 */
+        header {
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            height: 52px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            z-index: 100;
+        }
+
+        .brand-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: var(--accent-red);
+            box-shadow: 0 0 8px var(--accent-red);
+            transition: all 0.3s;
+        }
+
+        .status-dot.active {
+            background-color: var(--accent-green);
+            box-shadow: 0 0 12px var(--accent-green);
+        }
+
+        .brand-title {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn {
+            background: #182438;
+            color: #fff;
+            border: 1px solid var(--border-color);
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:hover {
+            background: #22334f;
+            border-color: var(--accent-cyan);
+        }
+
+        .btn.primary {
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            border-color: #38bdf8;
+            font-weight: 600;
+        }
+
+        .btn.primary:hover {
+            box-shadow: 0 0 14px rgba(56, 189, 248, 0.4);
+        }
+
+        .btn.active {
+            background: var(--accent-cyan);
+            color: #070a10;
+            font-weight: 600;
+        }
+
+        .btn.danger {
+            background: #dc2626;
+            border-color: #f87171;
+        }
+
+        /* 主体布局（左画布 + 右工具控制台） */
+        .workspace {
+            flex: 1;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .canvas-area {
+            flex: 1;
+            position: relative;
+            background: #05070c;
+        }
+
+        #radarCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* 右侧调测参数面板 */
+        .sidebar {
+            width: 320px;
+            background-color: var(--panel-bg);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            z-index: 50;
+        }
+
+        .panel-box {
+            padding: 14px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .panel-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .tele-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            padding: 8px 10px;
+            border-radius: 6px;
+        }
+
+        .tele-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 3px;
+        }
+
+        .tele-val {
+            font-family: Consolas, monospace;
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .tele-val.highlight {
+            color: var(--accent-green);
+        }
+
+        .form-row {
+            margin-bottom: 12px;
+        }
+
+        .form-row label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+        }
+
+        .form-row label span.val {
+            color: var(--accent-cyan);
+            font-family: monospace;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent-cyan);
+            height: 4px;
+            background: #1c2738;
+            outline: none;
+            border-radius: 2px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        .btn-group .btn {
+            flex: 1;
+            padding: 5px 8px;
+            font-size: 11px;
+            justify-content: center;
+        }
+
+        /* 鼠标悬浮十字光标探针提示框 */
+        .cursor-probe {
+            position: absolute;
+            background: rgba(13, 21, 34, 0.9);
+            border: 1px solid var(--accent-cyan);
+            backdrop-filter: blur(8px);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            color: #fff;
+            font-family: monospace;
+            display: none;
+            z-index: 10;
+        }
+
+        /* 弹窗遮罩（使用说明书与连线教程） */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(6px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            width: 720px;
+            max-width: 90vw;
+            max-height: 85vh;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+        }
+
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-header h3 {
+            font-size: 16px;
+            color: #fff;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            font-size: 13px;
+            line-height: 1.7;
+            color: #cbd5e1;
+        }
+
+        .modal-body h4 {
+            color: var(--accent-cyan);
+            margin: 16px 0 8px 0;
+            font-size: 14px;
+        }
+
+        .code-box {
+            background: #080c14;
+            border: 1px solid var(--border-color);
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-family: Consolas, monospace;
+            color: #38bdf8;
+            margin: 8px 0;
+        }
+
+        table.spec-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+
+        table.spec-table th, table.spec-table td {
+            border: 1px solid var(--border-color);
+            padding: 6px 10px;
+            text-align: left;
+            font-size: 12px;
+        }
+
+        table.spec-table th {
+            background: #111a28;
+            color: var(--accent-cyan);
+        }
+
+        /* 底部状态 */
+        footer {
+            height: 30px;
+            background: var(--panel-bg);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部导航 -->
+    <header>
+        <div class="brand-section">
+            <div id="connDot" class="status-dot"></div>
+            <div class="brand-title">STL-06N 激光雷达专业测试与调测工作台</div>
+            <span id="comBadge" style="font-size:11px; background:#111b2b; padding:3px 8px; border-radius:10px; border:1px solid #1e2c44; color:#94a3b8; font-family:monospace;">COM7 (230400 bps)</span>
+        </div>
+
+        <div class="header-actions">
+            <button class="btn" onclick="openHelpModal()">📖 基础接线与使用指南</button>
+            <button class="btn" onclick="togglePause()"><span id="pauseBtnText">⏸️ 暂停画面</span></button>
+            <button class="btn" onclick="clearPoints()">🧹 清空点云</button>
+            <button id="btnDemo" class="btn" onclick="toggleDemo()">🎮 模拟数据源</button>
+            <button id="btnConnect" class="btn primary" onclick="toggleConnect()">⚡ 连接雷达 (COM7)</button>
+        </div>
+    </header>
+
+    <!-- 工作区 -->
+    <div class="workspace">
+        <!-- 核心雷达画布 -->
+        <div class="canvas-area" id="canvasContainer">
+            <canvas id="radarCanvas"></canvas>
+            <div id="cursorProbe" class="cursor-probe"></div>
+        </div>
+
+        <!-- 右侧调控与分析控制台 -->
+        <div class="sidebar">
+            <!-- 遥测数据看板 -->
+            <div class="panel-box">
+                <div class="panel-title">雷达遥测数据 (Telemetry)</div>
+                <div class="telemetry-grid">
+                    <div class="tele-card">
+                        <div class="tele-label">采样点频</div>
+                        <div class="tele-val highlight" id="telePtsSec">0 pts/s</div>
+                    </div>
+                    <div class="tele-card">
+                        <div class="tele-label">扫描转速</div>
+                        <div class="tele-val" id="teleFreq">~10.0 Hz</div>
+                    </div>
+                    <div class="tele-card">
+                        <div class="tele-label">活跃点数</div>
+                        <div class="tele-val" id="teleActivePts">0</div>
+                    </div>
+                    <div class="tele-card">
+                        <div class="tele-label">平均强度</div>
+                        <div class="tele-val" id="teleAvgInt">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 显示量程控制 -->
+            <div class="panel-box">
+                <div class="panel-title">可视测距量程 (Range)</div>
+                <div class="btn-group" id="rangeBtns">
+                    <button class="btn" onclick="setRange(1.0)">1m</button>
+                    <button class="btn" onclick="setRange(2.0)">2m</button>
+                    <button class="btn active" onclick="setRange(3.0)">3m</button>
+                    <button class="btn" onclick="setRange(5.0)">5m</button>
+                    <button class="btn" onclick="setRange(8.0)">8m</button>
+                    <button class="btn" onclick="setRange(12.0)">12m(满)</button>
+                </div>
+            </div>
+
+            <!-- 点云过滤与滤波阈值设置 -->
+            <div class="panel-box">
+                <div class="panel-title">点云过滤与滤波 (Filters)</div>
+
+                <div class="form-row">
+                    <label>盲区过滤 (近距截断): <span class="val" id="blindVal">0.05 m</span></label>
+                    <input type="range" id="blindRange" min="0" max="0.5" step="0.01" value="0.05" oninput="updateFilters()">
+                </div>
+
+                <div class="form-row">
+                    <label>反射强度阈值 (过滤噪点): <span class="val" id="intensityVal">15</span></label>
+                    <input type="range" id="intensityRange" min="0" max="200" step="5" value="15" oninput="updateFilters()">
+                </div>
+
+                <div class="form-row">
+                    <label>扇区裁剪范围 (Angle Crop): <span class="val" id="angleCropVal">0° ~ 360°</span></label>
+                    <input type="range" id="angleMaxRange" min="60" max="360" step="10" value="360" oninput="updateFilters()">
+                </div>
+
+                <div class="form-row">
+                    <label>点云余辉留存时间: <span class="val" id="persistVal">350 ms</span></label>
+                    <input type="range" id="persistRange" min="100" max="1000" step="50" value="350" oninput="updateFilters()">
+                </div>
+            </div>
+
+            <!-- 配色主题与点大小 -->
+            <div class="panel-box">
+                <div class="panel-title">渲染样式 (Styling)</div>
+                <div class="form-row">
+                    <label>点云尺寸 (Point Size): <span class="val" id="ptSizeVal">2.5 px</span></label>
+                    <input type="range" id="ptSizeRange" min="1.0" max="5.0" step="0.5" value="2.5" oninput="updateFilters()">
+                </div>
+
+                <div class="form-row">
+                    <label>色彩映射模式</label>
+                    <div class="btn-group">
+                        <button class="btn active" id="btnColorIntensity" onclick="setColorMode('intensity')">信号强度热力</button>
+                        <button class="btn" id="btnColorCyan" onclick="setColorMode('cyan')">科技纯青</button>
+                        <button class="btn" id="btnColorGreen" onclick="setColorMode('green')">经典雷达绿</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 测距尺与辅助功能 -->
+            <div class="panel-box">
+                <div class="panel-title">测试辅助工具</div>
+                <button class="btn" style="width:100%; justify-content:center; margin-bottom:8px;" onclick="exportCSV()">📥 导出当前帧点云数据 (CSV)</button>
+                <button class="btn" style="width:100%; justify-content:center;" onclick="saveSnapshot()">📷 截屏保存雷达图 (PNG)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部状态栏 -->
+    <footer>
+        <div id="footerStatus">硬件状态: 待连接 | 物理端口: COM7 | 协议: DTOF STL-06N / LD06 / LD19 47-Byte Frame (0x54 0x2C)</div>
+        <div id="footerCursor">探针坐标: 距离 -- m | 角度 -- °</div>
+    </footer>
+
+    <!-- 使用指南模态窗口 -->
+    <div id="helpModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📖 STL-06N 激光雷达基础使用与连接教程</h3>
+                <button class="modal-close" onclick="closeHelpModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <h4>一、 硬件连接说明（雷达到 1203 转接板）</h4>
+                <p>STL-06N（乐动 DTOF 高抗光升级款，底层通信协议与 LD06/LD19 完全兼容通用）使用 ZH1.5 4-Pin 接口，通常只需接 <b>3 根线</b> 即可实现正常数据采集：</p>
+                <table class="spec-table">
+                    <tr><th>转接板引脚</th><th>雷达端功能</th><th>说明</th></tr>
+                    <tr><td><b>5伏 (5V)</b></td><td>4脚 (红线)</td><td>必须接 5V 供电正极</td></tr>
+                    <tr><td><b>GND</b></td><td>3脚 (黑线)</td><td>接地线</td></tr>
+                    <tr><td><b>RXI</b></td><td>1脚 (绿/黄线, Tx)</td><td>交叉连接：雷达发送接电脑接收</td></tr>
+                    <tr><td>3.3伏 / TXD / DTR</td><td>留空不接</td><td>雷达不需要电脑发送数据</td></tr>
+                    <tr><td>PWM (雷达2脚)</td><td>留空不接</td><td>不接时内部默认 10Hz 匀速转动</td></tr>
+                </table>
+
+                <h4>二、 电脑识别与驱动说明</h4>
+                <p>1203 转接板采用 <b>Silicon Labs CP2102</b> 芯片：</p>
+                <ul>
+                    <li>波特率固定为：<b>230400 bps</b>（不能设为 115200，否则无数据或乱码）；</li>
+                    <li>在设备管理器中显示为：<code>Silicon Labs CP210x USB to UART Bridge (COMx)</code>。</li>
+                </ul>
+
+                <h4>三、 解决“插上雷达后鼠标乱飘/乱动”问题</h4>
+                <p>这是 Windows 系统的经典历史 Bug（将连续吐数据的串口误识别为老式串口鼠标）：</p>
+                <div class="code-box">
+                    已为您在项目根目录生成了一键修复程序：<br>
+                    运行目录中的【一键修复鼠标乱飞(右键以管理员身份运行).bat】即可永久根治！
+                </div>
+
+                <h4>四、 怎么开始测试？</h4>
+                <p>1. 确认转接板插好且马达旋转；<br>
+                   2. 点击页面右上角 <b>【⚡ 连接雷达 (COM7)】</b> 按钮；<br>
+                   3. 在浏览器弹窗中选中 <b>CP2102 USB to UART Bridge (COM7)</b> 并点击连接；<br>
+                   4. 此时雷达点云图立即以 60 FPS 动态绘制，将手掌伸到雷达前即可实时看到手部轮廓点云！
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局核心状态
+        let port = null;
+        let reader = null;
+        let keepReading = false;
+        let isConnected = false;
+        let isDemoMode = false;
+        let isPaused = false;
+        let maxRangeM = 3.0;
+
+        // 滤波参数
+        let blindMinM = 0.05;
+        let minIntensity = 15;
+        let maxAngleCrop = 360;
+        let persistDurationMs = 350;
+        let pointSize = 2.5;
+        let colorMode = 'intensity'; // 'intensity', 'cyan', 'green'
+
+        // 720 个方位角点云存储桶
+        const pointMap = new Map();
+        let totalPtsSec = 0;
+        let rawPointsCount = 0;
+        let lastStatTime = performance.now();
+
+        // Canvas 初始化
+        const canvas = document.getElementById('radarCanvas');
+        const ctx = canvas.getContext('2d');
+        const cursorProbe = document.getElementById('cursorProbe');
+
+        function resizeCanvas() {
+            const container = document.getElementById('canvasContainer');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 切换量程
+        function setRange(r) {
+            maxRangeM = r;
+            const btns = document.querySelectorAll('#rangeBtns .btn');
+            btns.forEach(b => {
+                b.classList.toggle('active', parseFloat(b.innerText) === r);
+            });
+        }
+
+        function updateFilters() {
+            blindMinM = parseFloat(document.getElementById('blindRange').value);
+            document.getElementById('blindVal').innerText = blindMinM.toFixed(2) + ' m';
+
+            minIntensity = parseInt(document.getElementById('intensityRange').value);
+            document.getElementById('intensityVal').innerText = minIntensity;
+
+            maxAngleCrop = parseInt(document.getElementById('angleMaxRange').value);
+            document.getElementById('angleCropVal').innerText = '0° ~ ' + maxAngleCrop + '°';
+
+            persistDurationMs = parseInt(document.getElementById('persistRange').value);
+            document.getElementById('persistVal').innerText = persistDurationMs + ' ms';
+
+            pointSize = parseFloat(document.getElementById('ptSizeRange').value);
+            document.getElementById('ptSizeVal').innerText = pointSize.toFixed(1) + ' px';
+        }
+
+        function setColorMode(mode) {
+            colorMode = mode;
+            document.getElementById('btnColorIntensity').classList.toggle('active', mode === 'intensity');
+            document.getElementById('btnColorCyan').classList.toggle('active', mode === 'cyan');
+            document.getElementById('btnColorGreen').classList.toggle('active', mode === 'green');
+        }
+
+        function clearPoints() {
+            pointMap.clear();
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            document.getElementById('pauseBtnText').innerText = isPaused ? "▶️ 继续扫描" : "⏸️ 暂停画面";
+        }
+
+        // Web Serial API 串口连接与切包
+        async function toggleConnect() {
+            if (isConnected) {
+                disconnectRadar();
+                return;
+            }
+
+            if (!("serial" in navigator)) {
+                alert("当前浏览器不支持 Web Serial API，请使用 Google Chrome 或 Microsoft Edge 浏览器！");
+                return;
+            }
+
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 230400, dataBits: 8, stopBits: 1, parity: "none", bufferSize: 65536 });
+
+                isConnected = true;
+                keepReading = true;
+                document.getElementById('connDot').classList.add('active');
+                document.getElementById('comBadge').innerText = "COM7 已直连 (230400)";
+                document.getElementById('btnConnect').innerText = "断开雷达";
+                document.getElementById('btnConnect').classList.add('danger');
+                document.getElementById('footerStatus').innerText = "硬件状态: 正常流式采集 | 物理端口: COM7 | 协议: LD19 DTOF (0x54 0x2C)";
+
+                readLoopPromise = readSerialData();
+            } catch (err) {
+                console.error("连接失败:", err);
+                alert("连接失败: " + err.message + "\n\n排查提示：\n1. 请检查此前是否有其他软件占用了 COM7（如我们之前的 Python 监视器）；\n2. 确保已在弹窗中选择 CP2102 设备。");
+            }
+        }
+
+        let readLoopPromise = null;
+
+        async function disconnectRadar() {
+            keepReading = false;
+            try {
+                if (reader) {
+                    await reader.cancel().catch(e => console.warn("cancel err:", e));
+                }
+            } catch (e) {
+                console.warn(e);
+            }
+
+            if (readLoopPromise) {
+                try {
+                    await readLoopPromise;
+                } catch (e) {}
+                readLoopPromise = null;
+            }
+
+            await new Promise(res => setTimeout(res, 30));
+
+            try {
+                if (port) {
+                    await port.close();
+                }
+            } catch (e) {
+                console.warn("port close err:", e);
+            }
+
+            reader = null;
+            port = null;
+            isConnected = false;
+            document.getElementById('connDot').classList.remove('active');
+            document.getElementById('comBadge').innerText = "未连接";
+            document.getElementById('btnConnect').innerText = "⚡ 连接雷达";
+            document.getElementById('btnConnect').classList.remove('danger');
+            document.getElementById('footerStatus').innerText = "硬件状态: 待连接";
+        }
+
+        // 二进制点云流解析
+        async function readSerialData() {
+            const rawBytes = [];
+            while (port && port.readable && keepReading) {
+                let localReader = null;
+                try {
+                    localReader = port.readable.getReader();
+                    reader = localReader;
+                    while (keepReading) {
+                        const { value, done } = await localReader.read();
+                        if (done) break;
+                        if (value) {
+                            for (let i = 0; i < value.length; i++) {
+                                rawBytes.push(value[i]);
+                            }
+
+                            // 搜索 LD19 47 字节固定包长
+                            while (rawBytes.length >= 47) {
+                                if (rawBytes[0] === 0x54 && rawBytes[1] === 0x2C) {
+                                    const packet = rawBytes.splice(0, 47);
+                                    if (!isPaused) parsePacket(packet);
+                                } else {
+                                    rawBytes.shift();
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn("读取错误:", e);
+                } finally {
+                    if (localReader) {
+                        try {
+                            localReader.releaseLock();
+                        } catch (e) {}
+                    }
+                    if (reader === localReader) reader = null;
+                }
+            }
+        }
+
+        function parsePacket(pkt) {
+            const startAngle = (pkt[4] | (pkt[5] << 8)) / 100.0;
+            let endAngle = (pkt[42] | (pkt[43] << 8)) / 100.0;
+            if (endAngle < startAngle) endAngle += 360.0;
+            const step = (endAngle - startAngle) / 11.0;
+
+            const now = performance.now();
+            for (let i = 0; i < 12; i++) {
+                const offset = 6 + i * 3;
+                const distMm = pkt[offset] | (pkt[offset + 1] << 8);
+                const intensity = pkt[offset + 2];
+                const deg = (startAngle + step * i) % 360.0;
+                const distM = distMm / 1000.0;
+
+                // 滤波规则
+                if (distM >= blindMinM && intensity >= minIntensity && deg <= maxAngleCrop) {
+                    const bucket = Math.floor(deg * 2) % 720;
+                    pointMap.set(bucket, {
+                        deg: deg,
+                        distM: distM,
+                        intensity: intensity,
+                        time: now
+                    });
+                    rawPointsCount++;
+                }
+            }
+        }
+
+        // 模拟模式
+        let simSweep = 0;
+        function toggleDemo() {
+            isDemoMode = !isDemoMode;
+            document.getElementById('btnDemo').classList.toggle('active', isDemoMode);
+            if (isDemoMode) {
+                document.getElementById('connDot').classList.add('active');
+                document.getElementById('comBadge').innerText = "模拟数据源运行中";
+            } else if (!isConnected) {
+                document.getElementById('connDot').classList.remove('active');
+                document.getElementById('comBadge').innerText = "COM7 未连接";
+                pointMap.clear();
+            }
+        }
+
+        function generateSimData() {
+            if (!isDemoMode || isPaused) return;
+            const now = performance.now();
+            simSweep = (simSweep + 2.5) % 360;
+
+            // 模拟室内墙壁 + 移动障碍物
+            for (let deg = 0; deg < 360; deg += 1) {
+                const rad = deg * Math.PI / 180;
+                let dist = 2.4 + 0.4 * Math.sin(rad * 4);
+                // 模拟 1.2 米处来回晃动的手掌
+                const handAngle = 180 + Math.sin(simSweep * 0.03) * 40;
+                let intensity = 80;
+                if (Math.abs(deg - handAngle) < 14) {
+                    dist = 0.9 + 0.15 * Math.sin(deg * 0.3);
+                    intensity = 180;
+                }
+
+                if (dist >= blindMinM && intensity >= minIntensity && deg <= maxAngleCrop) {
+                    pointMap.set(deg * 2, {
+                        deg: deg,
+                        distM: dist,
+                        intensity: intensity,
+                        time: now
+                    });
+                    rawPointsCount++;
+                }
+            }
+        }
+
+        // 鼠标探针测距与坐标反馈
+        let mouseX = -999, mouseY = -999;
+        canvas.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const scale = (Math.min(cx, cy) * 0.88) / maxRangeM;
+
+            const dx = mouseX - cx;
+            const dy = cy - mouseY;
+            const distM = Math.sqrt(dx * dx + dy * dy) / scale;
+            const deg = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+
+            document.getElementById('footerCursor').innerText = 
+                `探针坐标: 距离 ${distM.toFixed(3)} m (${(distM*1000).toFixed(0)} mm) | 方位角 ${deg.toFixed(1)}°`;
+
+            // 在鼠标旁显示微型探针标签
+            cursorProbe.style.display = "block";
+            cursorProbe.style.left = (e.clientX + 14) + "px";
+            cursorProbe.style.top = (e.clientY + 14) + "px";
+            cursorProbe.innerHTML = `<div>距离: <b>${distM.toFixed(3)}m</b></div><div>角度: <b>${deg.toFixed(1)}°</b></div>`;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            cursorProbe.style.display = "none";
+            document.getElementById('footerCursor').innerText = "探针坐标: 距离 -- m | 角度 -- °";
+        });
+
+        // 绘制雷达核心画面
+        function renderRadar() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const radius = Math.min(cx, cy) * 0.88;
+            const scale = radius / maxRangeM;
+
+            ctx.fillStyle = "#05070c";
+            ctx.fillRect(0, 0, w, h);
+
+            // 1. 同心测距圆环
+            const ringDistances = [0.2, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 8.0, 12.0];
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = "#121b28";
+            ctx.setLineDash([3, 4]);
+
+            ringDistances.forEach(r => {
+                if (r <= maxRangeM) {
+                    const rPx = r * scale;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, rPx, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.fillStyle = "#3b536f";
+                    ctx.font = "11px Consolas, monospace";
+                    ctx.fillText(r >= 1 ? r + ".0m" : (r*100) + "cm", cx + 8, cy - rPx - 4);
+                }
+            });
+
+            // 2. 刻度放射线与方位标
+            ctx.setLineDash([]);
+            ctx.strokeStyle = "#172334";
+            for (let a = 0; a < 360; a += 45) {
+                const rad = a * Math.PI / 180;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(cx + radius * Math.sin(rad), cy - radius * Math.cos(rad));
+                ctx.stroke();
+            }
+
+            // 角度标签
+            ctx.font = "bold 12px sans-serif";
+            ctx.fillStyle = "#00f2fe";
+            ctx.fillText("0° (正前)", cx - 24, cy - radius - 10);
+            ctx.fillStyle = "#64748b";
+            ctx.fillText("90° (右)", cx + radius + 10, cy + 4);
+            ctx.fillText("180° (后)", cx - 24, cy + radius + 18);
+            ctx.fillText("270° (左)", cx - radius - 55, cy + 4);
+
+            // 3. 渲染点云
+            const now = performance.now();
+            let sumIntensity = 0;
+            let renderCount = 0;
+
+            pointMap.forEach((pt, key) => {
+                // 余辉过期淘汰
+                if (now - pt.time > persistDurationMs) {
+                    pointMap.delete(key);
+                    return;
+                }
+
+                if (pt.distM > maxRangeM) return;
+
+                const rad = pt.deg * Math.PI / 180;
+                const px = cx + (pt.distM * scale) * Math.sin(rad);
+                const py = cy - (pt.distM * scale) * Math.cos(rad);
+
+                // 配色方案
+                let color = "#00ff87";
+                if (colorMode === 'intensity') {
+                    if (pt.intensity > 160) color = "#ffe600";
+                    else if (pt.intensity > 80) color = "#00f2fe";
+                    else color = "#3b82f6";
+                } else if (colorMode === 'cyan') {
+                    color = "#00f2fe";
+                } else if (colorMode === 'green') {
+                    color = "#00ff87";
+                }
+
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(px, py, pointSize, 0, Math.PI * 2);
+                ctx.fill();
+
+                sumIntensity += pt.intensity;
+                renderCount++;
+            });
+
+            // 4. 雷达中心基座点
+            ctx.fillStyle = "#ef4444";
+            ctx.beginPath();
+            ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // 遥测面板数值同步
+            document.getElementById('teleActivePts').innerText = renderCount;
+            document.getElementById('teleAvgInt').innerText = renderCount > 0 ? (sumIntensity / renderCount).toFixed(0) : "0";
+        }
+
+        // 导出 CSV
+        function exportCSV() {
+            let csv = "Angle_Deg,Distance_M,Distance_MM,Intensity\n";
+            pointMap.forEach(pt => {
+                csv += `${pt.deg.toFixed(2)},${pt.distM.toFixed(3)},${(pt.distM*1000).toFixed(0)},${pt.intensity}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `LD19_PointCloud_${Date.now()}.csv`;
+            a.click();
+        }
+
+        // 截屏保存
+        function saveSnapshot() {
+            const url = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `LD19_Radar_Snapshot_${Date.now()}.png`;
+            a.click();
+        }
+
+        // 帮助模态窗
+        function openHelpModal() { document.getElementById('helpModal').style.display = 'flex'; }
+        function closeHelpModal() { document.getElementById('helpModal').style.display = 'none'; }
+
+        // 主循环
+        function mainLoop(ts) {
+            generateSimData();
+            renderRadar();
+
+            // 采样率计算
+            if (ts - lastStatTime >= 1000) {
+                totalPtsSec = rawPointsCount;
+                rawPointsCount = 0;
+                lastStatTime = ts;
+                document.getElementById('telePtsSec').innerText = totalPtsSec + " pts/s";
+            }
+
+            requestAnimationFrame(mainLoop);
+        }
+        requestAnimationFrame(mainLoop);
+    </script>
+</body>
+</html>

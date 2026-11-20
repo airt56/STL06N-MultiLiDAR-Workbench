@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LD19 激光雷达 360° 实时点云 & 二十四番花信风交互系统</title>
+    <style>
+        :root {
+            --bg-color: #070b12;
+            --panel-bg: #0d1522;
+            --accent-cyan: #00f2fe;
+            --accent-gold: #ffc837;
+            --accent-green: #00ff87;
+            --text-color: #e2e8f0;
+            --border-color: #1e2d42;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部导航控制台 */
+        header {
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            height: 54px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 10;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #ef4444;
+            box-shadow: 0 0 10px #ef4444;
+            transition: all 0.3s;
+        }
+
+        .brand-dot.connected {
+            background-color: var(--accent-green);
+            box-shadow: 0 0 12px var(--accent-green);
+        }
+
+        .title {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            color: #fff;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn {
+            background: #1a2636;
+            color: #fff;
+            border: 1px solid var(--border-color);
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:hover {
+            background: #23354c;
+            border-color: var(--accent-cyan);
+        }
+
+        .btn.primary {
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            border-color: #38bdf8;
+            font-weight: bold;
+        }
+
+        .btn.primary:hover {
+            box-shadow: 0 0 14px rgba(56, 189, 248, 0.4);
+        }
+
+        .btn.active {
+            background: var(--accent-cyan);
+            color: #070b12;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: #111a28;
+            border: 1px solid var(--border-color);
+            color: #94a3b8;
+            font-family: monospace;
+        }
+
+        /* 主体双视窗区域 */
+        main {
+            flex: 1;
+            position: relative;
+            display: flex;
+            overflow: hidden;
+        }
+
+        #radarCanvas, #wallCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #wallCanvas {
+            display: none;
+        }
+
+        /* 底部 HUD 栏 */
+        footer {
+            height: 32px;
+            background: var(--panel-bg);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            font-size: 12px;
+            color: #64748b;
+            font-family: monospace;
+            z-index: 10;
+        }
+
+        /* 浮动提示遮罩 */
+        .hud-overlay {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(13, 21, 34, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-color);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #cbd5e1;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .hud-overlay b {
+            color: var(--accent-cyan);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部状态栏与控制 -->
+    <header>
+        <div class="brand">
+            <div id="connDot" class="brand-dot"></div>
+            <div class="title">LD19 激光雷达 360° 实时点云 & 3m×2m 花信风互动系统</div>
+            <span id="portStatus" class="status-badge">COM7 未连接</span>
+        </div>
+
+        <div class="controls">
+            <!-- 视图切换 -->
+            <button id="btnViewRadar" class="btn active" onclick="switchView('radar')">360° 雷达全景图</button>
+            <button id="btnViewWall" class="btn" onclick="switchView('wall')">3m×2m 花信风互动墙</button>
+
+            <span style="color:#475569">|</span>
+
+            <!-- 量程切换 -->
+            <div id="rangeGroup" style="display:flex; gap:4px;">
+                <button class="btn" onclick="setRange(1.0)">1m</button>
+                <button class="btn" onclick="setRange(2.0)">2m</button>
+                <button class="btn active" id="btnRange3m" onclick="setRange(3.0)">3m(墙)</button>
+                <button class="btn" onclick="setRange(5.0)">5m</button>
+                <button class="btn" onclick="setRange(8.0)">8m</button>
+            </div>
+
+            <span style="color:#475569">|</span>
+
+            <!-- 连接与模拟按钮 -->
+            <button id="btnConnect" class="btn primary" onclick="toggleConnect()">
+                <span id="btnConnectText">⚡ 连接雷达 (COM7)</span>
+            </button>
+            <button id="btnDemo" class="btn" onclick="toggleDemo()">🎮 模拟漫游</button>
+        </div>
+    </header>
+
+    <!-- 核心画布显示区 -->
+    <main id="mainContainer">
+        <!-- 视图 1: 360度点云雷达盘 -->
+        <canvas id="radarCanvas"></canvas>
+
+        <!-- 视图 2: 3m×2m 二十四番花信风墙面互动全真模拟 -->
+        <canvas id="wallCanvas"></canvas>
+
+        <div id="hudInfo" class="hud-overlay">
+            <div>💡 <b>提示</b>: 点击右上角 <b>【⚡ 连接雷达】</b> 并在弹窗中选择 <b>CP210x (COM7)</b> 即可直连！</div>
+            <div style="font-size:12px; color:#94a3b8; margin-top:4px;">在雷达前挥动手掌，可直接观察到点云聚集与墙面窗格触碰触发。</div>
+        </div>
+    </main>
+
+    <!-- 底部状态栏 -->
+    <footer>
+        <div id="footerLeft">雷达型号: LDROBOT LD19 DTOF | 采样率: 4500Hz | 波特率: 230400 bps</div>
+        <div id="footerRight">接收速率: 0 点/秒 | 活跃点数: 0 | 触控点: 无</div>
+    </footer>
+
+    <script>
+        // 全局状态
+        let port = null;
+        let reader = null;
+        let keepReading = false;
+        let isConnected = false;
+        let isDemoMode = false;
+        let currentView = 'radar'; // 'radar' or 'wall'
+        let maxRangeM = 3.0; // 默认 3 米量程
+
+        // 点云数据缓冲 (以 0.5 度为一个桶，共 720 个方位)
+        const pointBuffer = new Map();
+        let totalPointsSec = 0;
+        let pointsCount = 0;
+        let lastSecTime = performance.now();
+
+        // 画布对象
+        const radarCanvas = document.getElementById('radarCanvas');
+        const radarCtx = radarCanvas.getContext('2d');
+        const wallCanvas = document.getElementById('wallCanvas');
+        const wallCtx = wallCanvas.getContext('2d');
+
+        // 二十四番花信风花卉数据库
+        const flowerList = [
+            { name: "梅花", term: "小寒 一候", poem: "寒凝大地梅始开，暗香浮动先传春", color: "#f472b6" },
+            { name: "山茶", term: "小寒 二候", poem: "雪里数枝悬绝壁，冷艳争春凌霜雪", color: "#ef4444" },
+            { name: "水仙", term: "小寒 三候", poem: "借水开花自一奇，水沉为骨玉为肌", color: "#38bdf8" },
+            { name: "瑞香", term: "大寒 一候", poem: "幽香结就芳菲梦，雪尽春来第一枝", color: "#ec4899" },
+            { name: "兰花", term: "大寒 二候", poem: "孤兰生幽园，众草齐青葱", color: "#10b981" },
+            { name: "山矾", term: "大寒 三候", poem: "风送山矾春意动，粉蝶初飞百草香", color: "#fbbf24" },
+            { name: "迎春", term: "立春 一候", poem: "金英翠萼带春寒，黄色精神自不同", color: "#facc15" },
+            { name: "樱桃", term: "立春 二候", poem: "浅艳缃裙带晚风，东园春信早先通", color: "#fb7185" },
+            { name: "望春", term: "立春 三候", poem: "望春初放玉楼前，绰约仙姿映晚天", color: "#e2e8f0" },
+            { name: "菜花", term: "雨水 一候", poem: "儿童急走追黄蝶，飞入菜花无处寻", color: "#eab308" },
+            { name: "杏花", term: "雨水 二候", poem: "小楼一夜听春雨，深巷明朝卖杏花", color: "#f43f5e" },
+            { name: "李花", term: "雨水 三候", poem: "春国送香双树李，冷艳凝霜万朵春", color: "#f8fafc" },
+            { name: "桃花", term: "惊蛰 一候", poem: "桃之夭夭，灼灼其华", color: "#fb7185" },
+            { name: "棣棠", term: "惊蛰 二候", poem: "绿罗裙带展轻风，金盏承杯映日红", color: "#eab308" },
+            { name: "蔷薇", term: "惊蛰 三候", poem: "水晶帘动微风起，满架蔷薇一院香", color: "#f43f5e" },
+            { name: "海棠", term: "春分 一候", poem: "只恐夜深花睡去，故烧高烛照红妆", color: "#fb7185" },
+            { name: "梨花", term: "春分 二候", poem: "梨花院落溶溶月，柳絮池塘淡淡风", color: "#f1f5f9" },
+            { name: "木兰", term: "春分 三候", poem: "紫苞成笔墨痕香，春风拂槛玉兰长", color: "#c084fc" },
+            { name: "桐花", term: "清明 一候", poem: "风光烟火清明日，桐花初发照新泉", color: "#a855f7" },
+            { name: "麦花", term: "清明 二候", poem: "万顷麦花翻碧浪，一声莺语报新晴", color: "#84cc16" },
+            { name: "柳花", term: "清明 三候", poem: "杨柳青青著地垂，杨花漫漫搅天飞", color: "#4ade80" },
+            { name: "牡丹", term: "谷雨 一候", poem: "唯有牡丹真国色，花开时节动京城", color: "#e11d48" },
+            { name: "荼蘼", term: "谷雨 二候", poem: "开到荼蘼花事了，丝丝天棘出莓墙", color: "#f8fafc" },
+            { name: "楝花", term: "谷雨 三候", poem: "处处木棉香未发，楝花先放小池塘", color: "#818cf8" }
+        ];
+
+        // 触控触发当前高亮花卉
+        let activeFlowerIndex = -1;
+        let flowerActiveTime = 0;
+        let audioCtx = null;
+
+        // 简单的五声音阶合成音效
+        function playChime(freq = 520) {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.2);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 1.2);
+            } catch (e) {}
+        }
+
+        // 初始化窗口画布尺寸
+        function resizeCanvas() {
+            const container = document.getElementById('mainContainer');
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            radarCanvas.width = w;
+            radarCanvas.height = h;
+            wallCanvas.width = w;
+            wallCanvas.height = h;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 视图切换
+        function switchView(view) {
+            currentView = view;
+            document.getElementById('btnViewRadar').classList.toggle('active', view === 'radar');
+            document.getElementById('btnViewWall').classList.toggle('active', view === 'wall');
+            document.getElementById('rangeGroup').style.display = view === 'radar' ? 'flex' : 'none';
+            radarCanvas.style.display = view === 'radar' ? 'block' : 'none';
+            wallCanvas.style.display = view === 'wall' ? 'block' : 'none';
+        }
+
+        // 切换量程
+        function setRange(r) {
+            maxRangeM = r;
+            const btns = document.querySelectorAll('#rangeGroup .btn');
+            btns.forEach(b => b.classList.toggle('active', b.innerText === (r.toString() + 'm') || (r===3.0 && b.innerText==='3m(墙)')));
+        }
+
+        // ------------------ Web Serial API 串口直连 ------------------
+        async function toggleConnect() {
+            if (isConnected) {
+                disconnectRadar();
+                return;
+            }
+
+            if (!("serial" in navigator)) {
+                alert("当前浏览器不支持 Web Serial API，请使用最新版 Google Chrome 或 Microsoft Edge 浏览器打开！");
+                return;
+            }
+
+            try {
+                // 弹出选择串口对话框（选择 CP2102）
+                port = await navigator.serial.requestPort();
+                // LD19 必须使用 230400 波特率
+                await port.open({ baudRate: 230400, dataBits: 8, stopBits: 1, parity: "none", bufferSize: 65536 });
+
+                isConnected = true;
+                keepReading = true;
+                document.getElementById('connDot').classList.add('connected');
+                document.getElementById('portStatus').innerText = "COM7 已直连 (230400)";
+                document.getElementById('btnConnectText').innerText = "断开雷达";
+                document.getElementById('btnConnect').style.background = "#dc2626";
+
+                readSerialStream();
+            } catch (err) {
+                console.error("连接失败:", err);
+                alert("连接失败: " + err.message + "\n请确保之前运行的桌面监视器已关闭，COM7 未被独占。");
+            }
+        }
+
+        async function disconnectRadar() {
+            keepReading = false;
+            if (reader) {
+                await reader.cancel();
+                reader = null;
+            }
+            if (port) {
+                await port.close();
+                port = null;
+            }
+            isConnected = false;
+            document.getElementById('connDot').classList.remove('connected');
+            document.getElementById('portStatus').innerText = "COM7 未连接";
+            document.getElementById('btnConnectText').innerText = "⚡ 连接雷达 (COM7)";
+            document.getElementById('btnConnect').style.background = "";
+        }
+
+        // 循环读取二进制点云并按 0x54 0x2C 协议切包
+        async function readSerialStream() {
+            const rawBuffer = [];
+            while (port && port.readable && keepReading) {
+                try {
+                    reader = port.readable.getReader();
+                    while (keepReading) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+                        if (value) {
+                            for (let i = 0; i < value.length; i++) {
+                                rawBuffer.push(value[i]);
+                            }
+
+                            // 检索 47 字节一组的 LD19 数据包
+                            while (rawBuffer.length >= 47) {
+                                if (rawBuffer[0] === 0x54 && rawBuffer[1] === 0x2C) {
+                                    const packet = rawBuffer.splice(0, 47);
+                                    parseLD19Packet(packet);
+                                } else {
+                                    rawBuffer.shift();
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn("读取异常:", e);
+                } finally {
+                    if (reader) reader.releaseLock();
+                }
+            }
+        }
+
+        // 解析单包 LD19 协议数据
+        function parseLD19Packet(pkt) {
+            // pkt[2-3] speed, pkt[4-5] start_angle
+            const startAngle = (pkt[4] | (pkt[5] << 8)) / 100.0;
+            // pkt[42-43] end_angle
+            let endAngle = (pkt[42] | (pkt[43] << 8)) / 100.0;
+            if (endAngle < startAngle) endAngle += 360.0;
+            const step = (endAngle - startAngle) / 11.0;
+
+            const now = performance.now();
+            for (let i = 0; i < 12; i++) {
+                const offset = 6 + i * 3;
+                const distMm = pkt[offset] | (pkt[offset + 1] << 8);
+                const intensity = pkt[offset + 2];
+                const deg = (startAngle + step * i) % 360.0;
+
+                if (distMm > 20 && intensity > 10) {
+                    const bucket = Math.floor(deg * 2) % 720;
+                    pointBuffer.set(bucket, {
+                        deg: deg,
+                        distM: distMm / 1000.0,
+                        intensity: intensity,
+                        time: now
+                    });
+                    pointsCount++;
+                }
+            }
+        }
+
+        // 模拟测试模式（手部漫游）
+        let demoAngle = 0;
+        function toggleDemo() {
+            isDemoMode = !isDemoMode;
+            document.getElementById('btnDemo').classList.toggle('active', isDemoMode);
+            if (isDemoMode) {
+                document.getElementById('connDot').classList.add('connected');
+                document.getElementById('portStatus').innerText = "模拟数据运行中";
+            } else if (!isConnected) {
+                document.getElementById('connDot').classList.remove('connected');
+                document.getElementById('portStatus').innerText = "COM7 未连接";
+                pointBuffer.clear();
+            }
+        }
+
+        function generateDemoPoints() {
+            if (!isDemoMode) return;
+            const now = performance.now();
+            demoAngle = (demoAngle + 1.2) % 360;
+
+            // 模拟室内四周墙壁 (矩形房间)
+            for (let deg = 0; deg < 360; deg += 1) {
+                const rad = deg * Math.PI / 180;
+                let dist = 2.2 + 0.3 * Math.sin(rad * 4);
+                // 模拟一只在 1.2 米处来回晃动的手掌
+                const handAngle = 180 + Math.sin(demoAngle * 0.05) * 35;
+                if (Math.abs(deg - handAngle) < 12) {
+                    dist = 0.8 + 0.2 * Math.sin(deg * 0.5);
+                }
+                pointBuffer.set(deg * 2, {
+                    deg: deg,
+                    distM: dist,
+                    intensity: 160,
+                    time: now
+                });
+                pointsCount++;
+            }
+        }
+
+        // ------------------ 视图 1: 360度点云雷达渲染 ------------------
+        function drawRadarView() {
+            const w = radarCanvas.width;
+            const h = radarCanvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const radius = Math.min(cx, cy) * 0.88;
+            const scale = radius / maxRangeM;
+
+            radarCtx.fillStyle = "#070b12";
+            radarCtx.fillRect(0, 0, w, h);
+
+            // 1. 绘制极坐标网格圆环
+            const rings = [0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 8.0];
+            radarCtx.lineWidth = 1;
+            radarCtx.strokeStyle = "#162536";
+            radarCtx.setLineDash([3, 4]);
+
+            rings.forEach(r => {
+                if (r <= maxRangeM) {
+                    const rPx = r * scale;
+                    radarCtx.beginPath();
+                    radarCtx.arc(cx, cy, rPx, 0, Math.PI * 2);
+                    radarCtx.stroke();
+                    radarCtx.fillStyle = "#3b536f";
+                    radarCtx.font = "11px Consolas, monospace";
+                    radarCtx.fillText(r + "m", cx + 6, cy - rPx - 4);
+                }
+            });
+
+            // 2. 绘制十字刻度线
+            radarCtx.setLineDash([]);
+            radarCtx.strokeStyle = "#1e2d42";
+            radarCtx.beginPath();
+            radarCtx.moveTo(cx - radius, cy); radarCtx.lineTo(cx + radius, cy);
+            radarCtx.moveTo(cx, cy - radius); radarCtx.lineTo(cx, cy + radius);
+            radarCtx.stroke();
+
+            // 角度标注
+            radarCtx.fillStyle = "#00f2fe";
+            radarCtx.font = "bold 12px sans-serif";
+            radarCtx.fillText("0° (正前方)", cx - 28, cy - radius - 10);
+            radarCtx.fillStyle = "#64748b";
+            radarCtx.fillText("90°", cx + radius + 12, cy + 4);
+            radarCtx.fillText("180° (后方)", cx - 25, cy + radius + 18);
+            radarCtx.fillText("270°", cx - radius - 35, cy + 4);
+
+            // 3. 绘制 3m×2m 墙面互动区范围（当显示 >= 3m 时）
+            if (maxRangeM >= 3.0) {
+                const boxW = 3.0 * scale;
+                const boxH = 2.0 * scale;
+                radarCtx.strokeStyle = "#ffc837";
+                radarCtx.lineWidth = 1.5;
+                radarCtx.setLineDash([5, 5]);
+                // 假定雷达安装在墙顶正中 (cx, cy) 向下俯扫
+                radarCtx.strokeRect(cx - boxW / 2, cy, boxW, boxH);
+                radarCtx.setLineDash([]);
+                radarCtx.fillStyle = "#ffc837";
+                radarCtx.font = "11px sans-serif";
+                radarCtx.fillText("3m × 2m 墙面互动识别范围", cx - boxW / 2 + 10, cy + 18);
+            }
+
+            // 4. 绘制实时扫描点云
+            const now = performance.now();
+            let touchedX = null, touchedY = null;
+
+            pointBuffer.forEach((pt, key) => {
+                // 剔除超过 0.4 秒未刷新的点
+                if (now - pt.time > 400) {
+                    pointBuffer.delete(key);
+                    return;
+                }
+
+                if (pt.distM > maxRangeM) return;
+
+                const rad = pt.deg * Math.PI / 180;
+                const px = cx + (pt.distM * scale) * Math.sin(rad);
+                const py = cy - (pt.distM * scale) * Math.cos(rad);
+
+                // 根据反射强度决定高亮色彩
+                let color = "#00ff87";
+                let size = 2.2;
+                if (pt.intensity > 140) {
+                    color = "#ffe600";
+                    size = 3.0;
+                } else if (pt.intensity > 70) {
+                    color = "#00f2fe";
+                    size = 2.5;
+                }
+
+                radarCtx.fillStyle = color;
+                radarCtx.beginPath();
+                radarCtx.arc(px, py, size, 0, Math.PI * 2);
+                radarCtx.fill();
+
+                // 判断是否落在 3m×2m 墙面区域内
+                if (maxRangeM >= 3.0) {
+                    const relX = (px - cx) / scale; // -1.5 ~ +1.5 米
+                    const relY = (py - cy) / scale; // 0 ~ 2.0 米
+                    if (relX >= -1.5 && relX <= 1.5 && relY >= 0.05 && relY <= 2.0) {
+                        touchedX = relX;
+                        touchedY = relY;
+                    }
+                }
+            });
+
+            // 绘制雷达中心红圈
+            radarCtx.fillStyle = "#ff0055";
+            radarCtx.beginPath();
+            radarCtx.arc(cx, cy, 6, 0, Math.PI * 2);
+            radarCtx.fill();
+            radarCtx.strokeStyle = "#fff";
+            radarCtx.stroke();
+        }
+
+        // ------------------ 视图 2: 3m×2m 墙面互动全真模拟 ------------------
+        function drawWallView() {
+            const w = wallCanvas.width;
+            const h = wallCanvas.height;
+
+            wallCtx.fillStyle = "#05080f";
+            wallCtx.fillRect(0, 0, w, h);
+
+            // 计算 3:2 比例居中容器
+            const targetRatio = 3 / 2;
+            let wallW = w * 0.92;
+            let wallH = wallW / targetRatio;
+            if (wallH > h * 0.88) {
+                wallH = h * 0.88;
+                wallW = wallH * targetRatio;
+            }
+            const wallX = (w - wallW) / 2;
+            const wallY = (h - wallH) / 2;
+
+            // 墙面外发光边框
+            wallCtx.strokeStyle = "#38bdf8";
+            wallCtx.lineWidth = 2;
+            wallCtx.strokeRect(wallX, wallY, wallW, wallH);
+
+            // 寻找当前落在墙面范围内的触碰点
+            const now = performance.now();
+            let touchRelX = null;
+            let touchRelY = null;
+
+            pointBuffer.forEach(pt => {
+                if (now - pt.time > 350) return;
+                // 雷达位于墙顶中点，角度向下 (90°~270°)
+                const rad = pt.deg * Math.PI / 180;
+                const xM = pt.distM * Math.sin(rad); // 左右方向 -1.5m ~ +1.5m
+                const yM = pt.distM * Math.cos(rad); // 向下方向 0m ~ 2.0m
+
+                // 如果落入 3m×2m 区域
+                if (xM >= -1.5 && xM <= 1.5 && yM >= 0.05 && yM <= 2.0) {
+                    touchRelX = (xM + 1.5) / 3.0; // 归一化 0 ~ 1
+                    touchRelY = yM / 2.0;         // 归一化 0 ~ 1
+                }
+            });
+
+            // 1. 如果处于全屏纯黑开花特写态 (B态)
+            if (activeFlowerIndex >= 0 && (now - flowerActiveTime < 6000)) {
+                drawFocusedBloom(wallX, wallY, wallW, wallH, flowerList[activeFlowerIndex]);
+                return;
+            } else {
+                activeFlowerIndex = -1;
+            }
+
+            // 2. 正常 6×4 格栅窗格态 (A态)
+            const cols = 6;
+            const rows = 4;
+            const cellW = wallW / cols;
+            const cellH = wallH / rows;
+
+            let hoveredIndex = -1;
+            if (touchRelX !== null && touchRelY !== null) {
+                const c = Math.min(cols - 1, Math.max(0, Math.floor(touchRelX * cols)));
+                const r = Math.min(rows - 1, Math.max(0, Math.floor(touchRelY * rows)));
+                hoveredIndex = r * cols + c;
+            }
+
+            // 触发开花
+            if (hoveredIndex >= 0 && hoveredIndex !== activeFlowerIndex) {
+                activeFlowerIndex = hoveredIndex;
+                flowerActiveTime = now;
+                playChime(320 + (activeFlowerIndex % 8) * 80);
+            }
+
+            // 绘制 24 窗格
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const idx = r * cols + c;
+                    const flower = flowerList[idx];
+                    const cx = wallX + c * cellW;
+                    const cy = wallY + r * cellH;
+
+                    const isHovered = (idx === hoveredIndex);
+
+                    // 卡片背景
+                    wallCtx.fillStyle = isHovered ? "rgba(56, 189, 248, 0.25)" : "rgba(15, 23, 42, 0.75)";
+                    wallCtx.fillRect(cx + 4, cy + 4, cellW - 8, cellH - 8);
+
+                    // 卡片边框
+                    wallCtx.strokeStyle = isHovered ? "#00f2fe" : "#334155";
+                    wallCtx.lineWidth = isHovered ? 2 : 1;
+                    wallCtx.strokeRect(cx + 4, cy + 4, cellW - 8, cellH - 8);
+
+                    // 候序与花名
+                    wallCtx.fillStyle = isHovered ? "#fff" : "#94a3b8";
+                    wallCtx.font = "11px sans-serif";
+                    wallCtx.fillText(flower.term, cx + 12, cy + 24);
+
+                    wallCtx.fillStyle = isHovered ? flower.color : "#f8fafc";
+                    wallCtx.font = "bold 18px 'Microsoft YaHei', sans-serif";
+                    wallCtx.fillText(flower.name, cx + 12, cy + 54);
+
+                    // 简约花瓣光晕点缀
+                    wallCtx.fillStyle = flower.color;
+                    wallCtx.beginPath();
+                    wallCtx.arc(cx + cellW - 24, cy + 30, isHovered ? 7 : 4, 0, Math.PI * 2);
+                    wallCtx.fill();
+                }
+            }
+
+            // 绘制触控光环
+            if (touchRelX !== null && touchRelY !== null) {
+                const tx = wallX + touchRelX * wallW;
+                const ty = wallY + touchRelY * wallH;
+                wallCtx.strokeStyle = "#ff0055";
+                wallCtx.lineWidth = 2;
+                wallCtx.beginPath();
+                wallCtx.arc(tx, ty, 20 + Math.sin(now * 0.01) * 6, 0, Math.PI * 2);
+                wallCtx.stroke();
+                wallCtx.fillStyle = "#ff0055";
+                wallCtx.beginPath();
+                wallCtx.arc(tx, ty, 5, 0, Math.PI * 2);
+                wallCtx.fill();
+            }
+        }
+
+        // B态：纯黑粒子沉浸特写渲染
+        function drawFocusedBloom(wx, wy, ww, wh, flower) {
+            wallCtx.fillStyle = "#000000";
+            wallCtx.fillRect(wx, wy, ww, wh);
+
+            const now = performance.now();
+            const cx = wx + ww / 2;
+            const cy = wy + wh / 2;
+
+            // 中央旋转发光粒子花卉
+            const particleCount = 120;
+            for (let i = 0; i < particleCount; i++) {
+                const angle = i * (Math.PI * 2 / 12) + (now * 0.0008);
+                const layer = Math.floor(i / 12);
+                const r = 25 + layer * 22 + Math.sin(now * 0.003 + i) * 8;
+                const px = cx + Math.cos(angle) * r;
+                const py = cy + Math.sin(angle) * r;
+
+                wallCtx.fillStyle = (i % 3 === 0) ? "#ffe600" : flower.color;
+                wallCtx.shadowBlur = 12;
+                wallCtx.shadowColor = flower.color;
+                wallCtx.beginPath();
+                wallCtx.arc(px, py, 2.5 + (layer % 2), 0, Math.PI * 2);
+                wallCtx.fill();
+                wallCtx.shadowBlur = 0;
+            }
+
+            // 左侧：二十四番花信风
+            wallCtx.fillStyle = "#ffffff";
+            wallCtx.font = "bold 28px 'Microsoft YaHei', serif";
+            wallCtx.fillText("二十四番花信风", wx + 60, wy + 120);
+
+            wallCtx.fillStyle = flower.color;
+            wallCtx.font = "20px 'Microsoft YaHei', sans-serif";
+            wallCtx.fillText(flower.term + " · " + flower.name, wx + 60, wy + 170);
+
+            // 右侧：传世诗句
+            wallCtx.fillStyle = "#cbd5e1";
+            wallCtx.font = "16px 'Microsoft YaHei', serif";
+            wallCtx.fillText("风应花期，其来有信", wx + ww - 240, wy + 120);
+            wallCtx.fillStyle = "#e2e8f0";
+            wallCtx.font = "italic 15px 'Microsoft YaHei', serif";
+            wallCtx.fillText(flower.poem, wx + ww - 320, wy + 170);
+
+            // 底部返回提示
+            wallCtx.fillStyle = "#64748b";
+            wallCtx.font = "12px sans-serif";
+            wallCtx.fillText("停留 6 秒后自动归位，或挥手触碰其他区域...", cx - 120, wy + wh - 30);
+        }
+
+        // ------------------ 主渲染动画循环 (60 FPS) ------------------
+        function animateLoop(timestamp) {
+            generateDemoPoints();
+
+            if (currentView === 'radar') {
+                drawRadarView();
+            } else {
+                drawWallView();
+            }
+
+            // 统计每秒点数
+            if (timestamp - lastSecTime >= 1000) {
+                totalPointsSec = pointsCount;
+                pointsCount = 0;
+                lastSecTime = timestamp;
+
+                document.getElementById('footerRight').innerText = 
+                    `接收速率: ${totalPointsSec} 点/秒 | 活跃点数: ${pointBuffer.size} | 状态: 正常`;
+            }
+
+            requestAnimationFrame(animateLoop);
+        }
+        requestAnimationFrame(animateLoop);
+
+    </script>
+</body>
+</html>
